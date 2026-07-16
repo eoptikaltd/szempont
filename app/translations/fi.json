@@ -1,0 +1,19 @@
+{
+  "Main menu": "Päävalikko", "Dashboard": "Kojelauta", "Sourcing Monitor": "Hankintamonitori",
+  "Price Watch": "Hintaseuranta", "Reconciliation": "Täsmäytys", "SEO Atlas": "SEO Atlas",
+  "WIMO Orders": "WIMO-tilaukset", "New monitor": "Uusi monitori",
+  "Find a SKU, supplier, PO…": "Etsi SKU, toimittaja, ostotilaus…", "Super Admin": "Pääkäyttäjä",
+  "Language": "Kieli", "Density": "Tiheys", "Comfortable": "Väljä", "Compact": "Tiivis",
+  "Daily run": "Päivittäinen ajo", "3 suppliers below target margin": "3 toimittajaa tavoitekatteen alle",
+  "Monitors refreshed at 06:00. Two lines flipped to out-of-stock overnight.": "Monitorit päivitetty klo 06.00. Kaksi riviä loppui varastosta yön aikana.",
+  "Open report": "Avaa raportti", "Purchase orders": "Ostotilaukset",
+  "Live from Tharanis · {n} shown": "Reaaliajassa Tharanisista · {n} näytetään",
+  "All": "Kaikki", "Open": "Avoimet", "Closed": "Suljetut",
+  "Raise PO": "Luo ostotilaus", "Mark received": "Merkitse vastaanotetuksi", "Track": "Seuraa", "View": "Näytä", "Delete": "Poista",
+  "Out of stock": "Loppu varastosta", "In transit": "Kuljetuksessa", "On order": "Tilattu",
+  "Received · {n} units": "Vastaanotettu · {n} kpl",
+  "Reorder": "Tilaa lisää", "Lens": "Linssit", "Drops": "Tipat", "Frames": "Kehykset",
+  "Showing {a} of {b}": "{a} / {b} näytetään",
+  "Filters": "Suodattimet", "Apply": "Käytä", "Recommended": "Suositellut",
+  "Supplier": "Toimittaja", "Δ Margin": "Δ Kate"
+}

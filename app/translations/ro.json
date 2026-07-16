@@ -1,0 +1,19 @@
+{
+  "Main menu": "Meniu principal", "Dashboard": "Tablou de bord", "Sourcing Monitor": "Monitor aprovizionare",
+  "Price Watch": "Monitor prețuri", "Reconciliation": "Reconciliere", "SEO Atlas": "SEO Atlas",
+  "WIMO Orders": "Comenzi WIMO", "New monitor": "Monitor nou",
+  "Find a SKU, supplier, PO…": "Caută SKU, furnizor, PO…", "Super Admin": "Super Admin",
+  "Language": "Limbă", "Density": "Densitate", "Comfortable": "Confortabil", "Compact": "Compact",
+  "Daily run": "Rulare zilnică", "3 suppliers below target margin": "3 furnizori sub marja țintă",
+  "Monitors refreshed at 06:00. Two lines flipped to out-of-stock overnight.": "Monitoarele actualizate la 06:00. Două linii au trecut peste noapte în stoc epuizat.",
+  "Open report": "Deschide raportul", "Purchase orders": "Comenzi de achiziție",
+  "Live from Tharanis · {n} shown": "În timp real din Tharanis · {n} afișate",
+  "All": "Toate", "Open": "Deschise", "Closed": "Închise",
+  "Raise PO": "Creează PO", "Mark received": "Marchează primit", "Track": "Urmărește", "View": "Vezi", "Delete": "Șterge",
+  "Out of stock": "Stoc epuizat", "In transit": "În tranzit", "On order": "Comandat",
+  "Received · {n} units": "Primit · {n} buc.",
+  "Reorder": "Recomandă", "Lens": "Lentile", "Drops": "Picături", "Frames": "Rame",
+  "Showing {a} of {b}": "{a} din {b} afișate",
+  "Filters": "Filtre", "Apply": "Aplică", "Recommended": "Recomandat",
+  "Supplier": "Furnizor", "Δ Margin": "Δ Marjă"
+}

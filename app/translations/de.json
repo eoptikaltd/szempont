@@ -1,0 +1,19 @@
+{
+  "Main menu": "Hauptmenü", "Dashboard": "Dashboard", "Sourcing Monitor": "Beschaffungsmonitor",
+  "Price Watch": "Preiswächter", "Reconciliation": "Abgleich", "SEO Atlas": "SEO Atlas",
+  "WIMO Orders": "WIMO-Bestellungen", "New monitor": "Neuer Monitor",
+  "Find a SKU, supplier, PO…": "SKU, Lieferant, Bestellung suchen…", "Super Admin": "Super-Admin",
+  "Language": "Sprache", "Density": "Dichte", "Comfortable": "Komfortabel", "Compact": "Kompakt",
+  "Daily run": "Täglicher Lauf", "3 suppliers below target margin": "3 Lieferanten unter Zielmarge",
+  "Monitors refreshed at 06:00. Two lines flipped to out-of-stock overnight.": "Monitore um 06:00 aktualisiert. Zwei Positionen über Nacht nicht mehr vorrätig.",
+  "Open report": "Bericht öffnen", "Purchase orders": "Bestellungen",
+  "Live from Tharanis · {n} shown": "Live aus Tharanis · {n} angezeigt",
+  "All": "Alle", "Open": "Offen", "Closed": "Geschlossen",
+  "Raise PO": "Bestellung anlegen", "Mark received": "Als erhalten markieren", "Track": "Verfolgen", "View": "Ansehen", "Delete": "Löschen",
+  "Out of stock": "Nicht vorrätig", "In transit": "Unterwegs", "On order": "Bestellt",
+  "Received · {n} units": "Erhalten · {n} Stück",
+  "Reorder": "Nachbestellen", "Lens": "Gläser", "Drops": "Tropfen", "Frames": "Fassungen",
+  "Showing {a} of {b}": "{a} von {b} angezeigt",
+  "Filters": "Filter", "Apply": "Anwenden", "Recommended": "Empfohlen",
+  "Supplier": "Lieferant", "Δ Margin": "Δ Marge"
+}

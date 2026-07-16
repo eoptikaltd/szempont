@@ -1,0 +1,169 @@
+{
+  "home": {
+    "id": "atlas",
+    "label": "Home",
+    "url": "https://atlas.eoptika.hu",
+    "icon": "atlas",
+    "status": "live"
+  },
+  "groups": [
+    {
+      "name": "Performance",
+      "items": [
+        {
+          "id": "moneyprint",
+          "label": "Moneyprint",
+          "icon": "moneyprint",
+          "url": "https://moneyprint.atlas.eoptika.hu",
+          "status": "live"
+        },
+        {
+          "id": "cockpit",
+          "label": "Cockpit",
+          "icon": "cockpit",
+          "url": "https://cockpit.atlas.eoptika.hu",
+          "status": "build"
+        }
+      ]
+    },
+    {
+      "name": "Data & Platform",
+      "items": [
+        {
+          "id": "datawarehouse",
+          "label": "Datawarehouse",
+          "icon": "datawarehouse",
+          "url": "https://datawarehouse.atlas.eoptika.hu",
+          "status": "live"
+        },
+        {
+          "id": "enrichment",
+          "label": "Enrichment",
+          "icon": "enrichment",
+          "url": "https://enrichment.atlas.eoptika.hu",
+          "status": "live"
+        },
+        {
+          "id": "devops",
+          "label": "DevOps",
+          "icon": "devops",
+          "url": "https://devops.atlas.eoptika.hu",
+          "status": "live"
+        }
+      ]
+    },
+    {
+      "name": "Growth & Channels",
+      "items": [
+        {
+          "id": "pseo",
+          "label": "pSEO",
+          "icon": "pseo",
+          "url": "https://seo.atlas.eoptika.hu",
+          "status": "live"
+        },
+        {
+          "id": "radar",
+          "label": "Radar",
+          "icon": "radar",
+          "url": "https://radar.atlas.eoptika.hu",
+          "status": "build"
+        },
+        {
+          "id": "marketplaces",
+          "label": "Marketplaces",
+          "icon": "marketplaces",
+          "url": "https://marketplaces.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "iris",
+          "label": "IRIS",
+          "icon": "iris",
+          "url": "https://iris.atlas.eoptika.hu",
+          "status": "build"
+        }
+      ]
+    },
+    {
+      "name": "Fulfilment & Supply",
+      "items": [
+        {
+          "id": "szempont",
+          "label": "Szempont",
+          "icon": "iris",
+          "url": "https://szempont.eoptika.hu",
+          "status": "build"
+        },
+        {
+          "id": "suppliers",
+          "label": "Suppliers",
+          "icon": "suppliers",
+          "url": "https://suppliers.atlas.eoptika.hu",
+          "status": "live"
+        },
+        {
+          "id": "wimo",
+          "label": "WIMO",
+          "icon": "wimo",
+          "url": "https://wimo.atlas.eoptika.hu",
+          "status": "build"
+        },
+        {
+          "id": "warehouse",
+          "label": "Warehouse",
+          "icon": "warehouse",
+          "url": "https://warehouse.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "lab",
+          "label": "Lab / Műhely",
+          "icon": "lab",
+          "url": "https://lab.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "boomerang",
+          "label": "Boomerang",
+          "icon": "boomerang",
+          "url": "https://returns.atlas.eoptika.hu",
+          "status": "plan"
+        }
+      ]
+    },
+    {
+      "name": "Back office",
+      "items": [
+        {
+          "id": "cs",
+          "label": "CS",
+          "icon": "cs",
+          "url": "https://cs.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "finance",
+          "label": "Finance",
+          "icon": "finance",
+          "url": "https://finance.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "legal",
+          "label": "Legal",
+          "icon": "legal",
+          "url": "https://legal.atlas.eoptika.hu",
+          "status": "plan"
+        },
+        {
+          "id": "hr",
+          "label": "HR",
+          "icon": "hr",
+          "url": "https://hr.atlas.eoptika.hu",
+          "status": "plan"
+        }
+      ]
+    }
+  ]
+}

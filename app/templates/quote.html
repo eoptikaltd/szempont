@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Quote — detail_view. A pair (OD + OS SKUs) in depth. #}
+{% block content %}
+{% if error %}
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">{{ t('Quote not available') }}</h2></div>
+    <p class="hint">{{ error }}</p>
+    <div class="toolbar"><a class="btn btn--primary" href="{{ url_for('finder') }}">{{ t('Back to lens finder') }}</a></div>
+  </div>
+{% else %}
+  <div class="detail-head">
+    <div>
+      <div class="eyebrow">{{ t('Quote') }} · {{ q.date }}</div>
+      <h2 class="card__title">{{ r.name.split(', SPH')[0] if ', SPH' in r.name else r.name }}</h2>
+      <p class="card__subtitle">OD <span class="code">{{ r.sku }}</span> · OS <span class="code">{{ l.sku }}</span></p>
+    </div>
+    <div>{% if q.override %}{{ ui.pill(t('promo price') ~ ' · ' ~ q.override, 'warning') }}{% endif %}</div>
+  </div>
+
+  <div class="kpis">
+    {{ ui.kpi(t('Pair total, gross'), q.gross, t('VAT {rate} included', rate=q.vat_rate), 'info') }}
+    {{ ui.kpi(t('Net'), q.total_net) }}
+    {{ ui.kpi(t('VAT'), q.vat) }}
+  </div>
+
+  <div class="cols-main">
+    <div class="card">
+      <div class="card__header"><h2 class="card__title">{{ t('Price build-up (net)') }}</h2></div>
+      <table class="table">
+        <thead><tr><th></th><th>{{ t('Item') }}</th><th>{{ t('Net') }}</th></tr></thead>
+        <tbody>
+          {% for x in lines %}
+          <tr><td><b>{{ x.eye }}</b></td><td>{{ x.name }}<div class="sub code">{{ x.code }}</div></td><td class="tnum">{{ x.net }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card__header"><h2 class="card__title">{{ t('Reproducibility') }}</h2></div>
+      <div class="meta-grid">
+        <div><div class="eyebrow">{{ t('Catalog version') }}</div><div class="code">{{ q.catalog_version }}</div></div>
+        <div><div class="eyebrow">{{ t('Quote date') }}</div><div class="tnum">{{ q.date }}</div></div>
+        <div><div class="eyebrow">{{ t('VAT rate') }}</div><div class="tnum">{{ q.vat_rate }}</div></div>
+      </div>
+      <p class="hint">{{ t('Re-pricing this configuration against the same catalog version yields the identical quote.') }}</p>
+      <div class="toolbar"><a class="btn btn--ghost" href="{{ url_for('finder') }}">{{ t('Back to lens finder') }}</a></div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

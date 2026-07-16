@@ -1,0 +1,23 @@
+[project]
+name = "szempont"
+version = "0.1.0"
+description = "eOptika in-store POS - Wave 1: catalog ingest (M1) + pricing engine (M2)"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+ingest = [
+    "google-cloud-bigquery>=3.25",
+    "google-cloud-storage>=2.18",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["pricing*", "ingest*"]

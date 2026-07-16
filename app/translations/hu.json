@@ -1,0 +1,19 @@
+{
+  "Main menu": "Főmenü", "Dashboard": "Irányítópult", "Sourcing Monitor": "Beszerzési monitor",
+  "Price Watch": "Árfigyelő", "Reconciliation": "Egyeztetés", "SEO Atlas": "SEO Atlas",
+  "WIMO Orders": "WIMO rendelések", "New monitor": "Új monitor",
+  "Find a SKU, supplier, PO…": "SKU, beszállító, PO keresése…", "Super Admin": "Fő adminisztrátor",
+  "Language": "Nyelv", "Density": "Sűrűség", "Comfortable": "Kényelmes", "Compact": "Tömör",
+  "Daily run": "Napi futás", "3 suppliers below target margin": "3 beszállító a cél árrés alatt",
+  "Monitors refreshed at 06:00. Two lines flipped to out-of-stock overnight.": "A monitorok 06:00-kor frissültek. Két tétel éjszaka készlethiányossá vált.",
+  "Open report": "Jelentés megnyitása", "Purchase orders": "Beszerzési rendelések",
+  "Live from Tharanis · {n} shown": "Élőben a Tharanisból · {n} megjelenítve",
+  "All": "Összes", "Open": "Nyitott", "Closed": "Lezárt",
+  "Raise PO": "PO létrehozása", "Mark received": "Beérkezettnek jelöl", "Track": "Követés", "View": "Megtekintés", "Delete": "Törlés",
+  "Out of stock": "Nincs készleten", "In transit": "Úton", "On order": "Megrendelve",
+  "Received · {n} units": "Beérkezett · {n} db",
+  "Reorder": "Utánrendelés", "Lens": "Lencse", "Drops": "Cseppek", "Frames": "Keretek",
+  "Showing {a} of {b}": "{a} / {b} megjelenítve",
+  "Filters": "Szűrők", "Apply": "Alkalmaz", "Recommended": "Ajánlott",
+  "Supplier": "Beszállító", "Δ Margin": "Δ Árrés"
+}

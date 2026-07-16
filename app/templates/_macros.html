@@ -1,0 +1,40 @@
+{# Atlas UI macros — import in any template:  {% import '_macros.html' as ui %}  #}
+
+{# --- icon: draw a glyph from the sprite (id without the i- prefix) --- #}
+{% macro icon(name, cls='') %}<svg class="icon {{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
+
+{# --- sidebar: renders the whole Atlas menu from nav.json --- #}
+{% macro sidebar(nav, active='') %}
+<aside class="sidebar">
+  <a class="sidebar__brand" href="{{ nav.home.url }}">
+    <div class="mark">{{ icon('atlas') }}</div>
+    <div><div class="name">Atlas</div><div class="sub">eOptika Ops</div></div>
+  </a>
+  {% for group in nav.groups %}
+  <div>
+    <div class="sidebar__section">{{ group.name }}</div>
+    <nav class="nav">
+      {% for it in group['items'] %}
+      <a class="nav-item {{ 'nav-item--active' if it.id == active }}" href="{{ it.url }}"
+         {{ 'aria-current=page' if it.id == active }}>
+        {{ icon(it.icon) }}<span class="nav-item__label">{{ it.label }}</span>
+        <span class="nav-dot nav-dot--{{ it.status }}"></span>
+      </a>
+      {% endfor %}
+    </nav>
+  </div>
+  {% endfor %}
+</aside>
+{% endmacro %}
+
+{# --- KPI card. tone = success|danger|warning|info|muted ; flag=True draws the alert border --- #}
+{% macro kpi(label, value, foot='', tone='muted', flag=False) %}
+<div class="kpi {{ 'kpi--flag' if flag }}">
+  <div class="kpi__label">{{ label }}</div>
+  <div class="kpi__value tnum">{{ value }}</div>
+  {% if foot %}<div class="kpi__foot status--{{ tone }}">{{ foot }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{# --- status label (never a button; see the color doctrine) --- #}
+{% macro pill(text, tone='muted') %}<span class="status status--{{ tone }}">{{ text }}</span>{% endmacro %}

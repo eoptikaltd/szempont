@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Lens finder — prescription-pad-first (research: Glasson / ClearVis
+   ajánlat flow). OD/OS rows; results = families where both eyes exist. #}
+{% block content %}
+
+  <div class="kpis">
+    {{ ui.kpi(t('Pair options'), kpis.candidates) }}
+    {{ ui.kpi(t('Suppliers'), kpis.suppliers) }}
+    {{ ui.kpi(t('From (pair, gross)'), kpis.best_price, '', 'info') }}
+    {{ ui.kpi(t('Catalog version'), kpis.catalog_version, t('quotes reproducible against this version'), 'muted') }}
+  </div>
+
+  <div class="card">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">{{ t('Prescription') }}</h2>
+        <p class="card__subtitle">{{ t('Entered exactly as on the paper Rx — right eye first') }}</p>
+      </div>
+    </div>
+    <form method="get" action="{{ url_for('finder') }}">
+      <table class="table">
+        <thead><tr><th></th><th>{{ t('Sphere') }}</th><th>{{ t('Cylinder') }}</th><th>{{ t('Addition') }}</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>OD</b> <span class="sub">{{ t('right') }}</span></td>
+            <td><input class="input tnum" name="od_sph" inputmode="decimal" value="{{ f.get('od_sph','-2.00') }}" aria-label="OD {{ t('Sphere') }}"></td>
+            <td><input class="input tnum" name="od_cyl" inputmode="decimal" value="{{ f.get('od_cyl','0') }}" aria-label="OD {{ t('Cylinder') }}"></td>
+            <td><input class="input tnum" name="od_add" inputmode="decimal" value="{{ f.get('od_add','0') }}" aria-label="OD {{ t('Addition') }}"></td>
+          </tr>
+          <tr>
+            <td><b>OS</b> <span class="sub">{{ t('left') }}</span></td>
+            <td><input class="input tnum" name="os_sph" inputmode="decimal" value="{{ f.get('os_sph','-2.00') }}" aria-label="OS {{ t('Sphere') }}"></td>
+            <td><input class="input tnum" name="os_cyl" inputmode="decimal" value="{{ f.get('os_cyl','0') }}" aria-label="OS {{ t('Cylinder') }}"></td>
+            <td><input class="input tnum" name="os_add" inputmode="decimal" value="{{ f.get('os_add','0') }}" aria-label="OS {{ t('Addition') }}"></td>
+          </tr>
+        </tbody>
+      </table>
+      {% if surcharges %}
+      <div class="field">
+        <span class="label">{{ t('Options (priced as surcharges)') }}</span>
+        {% for s in surcharges %}
+        <label class="checkbox">
+          <input type="checkbox" name="opt" value="{{ s.code }}" {{ 'checked' if s.code in options }}>
+          {{ s.name }} · <span class="tnum">{{ huf(s.retail_net) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="toolbar">
+        <button class="btn btn--primary" type="submit">{{ t('Find lenses') }}</button>
+        <a class="btn btn--ghost" href="{{ url_for('finder') }}">{{ t('Reset') }}</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">{{ t('Lens pairs') }}</h2>
+        <p class="card__subtitle">{{ t('Families where both eyes are available, best margin first') }}</p>
+      </div>
+    </div>
+    {% if rows %}
+    <table class="table">
+      <thead><tr>
+        <th>{{ t('Lens family') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('Index') }}</th>
+        <th>{{ t('Dia') }}</th><th>{{ t('Pair, gross') }}</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.family }}
+            <div class="sub"><span class="code">OD {{ r.sku_r }}</span><br><span class="code">OS {{ r.sku_l }}</span></div>
+          </td>
+          <td>{{ r.supplier }}</td>
+          <td class="tnum">{{ r.index }}</td>
+          <td class="tnum">{{ r.dia }}</td>
+          <td class="tnum">{{ r.gross }}{% if loop.first %} {{ ui.pill(t('ajánlott'), 'success') }}{% endif %}</td>
+          <td><a class="btn btn--soft btn--sm" href="{{ r.quote_url }}">{{ t('Quote') }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="hint">{{ t('No family covers both eyes with these powers. Check the signs (minus cylinder) or the entered values.') }}</p>
+    {% endif %}
+  </div>
+
+{% endblock %}

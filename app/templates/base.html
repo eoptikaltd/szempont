@@ -1,0 +1,50 @@
+<!doctype html>
+{% import '_macros.html' as ui %}
+<html lang="{{ lang|default('hu') }}" data-theme="{{ theme|default('gymove') }}" data-density="{{ density|default('comfortable') }}">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="ds-version" content="1.2">
+  <title>{% block title %}{{ page_title|default(app_name) }} · Atlas{% endblock %}</title>
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="{{ url_for('static', filename='fonts/dm-sans-latin-400-normal.woff2') }}">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="{{ url_for('static', filename='fonts/dm-sans-latin-600-normal.woff2') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin-tokens.css') }}">
+  {# PROD: point the two lines above at the shared bucket instead, so every tool updates in lockstep:
+     https://assets.atlas.eoptika.hu/admin-tokens.1.2.css  and  /fonts/... #}
+</head>
+<body>
+{% include '_sprite.html' %}
+<div class="app">
+  {{ ui.sidebar(nav, nav_active) }}
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar__title">{% block page_title %}{{ page_title }}{% endblock %}</div>
+      <div class="search">
+        {{ ui.icon('radar','') if false }}
+        <svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input placeholder="{{ t('Find a SKU, supplier, PO…') }}" aria-label="{{ t('Find a SKU, supplier, PO…') }}">
+      </div>
+      <div class="topbar__spacer"></div>
+      {% block topbar_actions %}
+      <label class="langselect" title="{{ t('Language') }}">
+        <svg width="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg>
+        <select aria-label="{{ t('Language') }}" onchange="location.href='{{ url_for('set_lang') }}?lang='+this.value+'&next={{ request.path }}'">
+          {% for code, name in languages %}<option value="{{ code }}" {{ 'selected' if code == lang }}>{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="segmented" role="group" aria-label="{{ t('Density') }}">
+        {% for d in ['comfortable','compact','control'] %}
+        <a class="segmented__item {{ 'segmented__item--active' if density==d }}"
+           href="{{ url_for('set_density') }}?d={{ d }}&next={{ request.path }}">{{ t(d|capitalize) }}</a>
+        {% endfor %}
+      </div>
+      <div class="profile-chip"><div class="avatar">SV</div>
+        <div class="who"><b>Sabie Valner</b><span>{{ t('Super Admin') }}</span></div>
+      </div>
+      {% endblock %}
+    </header>
+    <div class="content">{% block content %}{% endblock %}</div>
+  </main>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

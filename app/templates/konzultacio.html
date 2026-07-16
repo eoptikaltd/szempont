@@ -1,0 +1,67 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Konzultációs mód — customer-facing shared screen. Larger type, three tiers,
+   honest thickness comparison. Contract classes only; density: comfortable. #}
+{% block content %}
+
+  <div class="card">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">{{ t('Az Ön szemüveglencse-lehetőségei') }}</h2>
+        <p class="card__subtitle">{{ t('Három ajánlat az Ön receptjére — közösen nézzük végig') }}</p>
+      </div>
+    </div>
+    <form method="get" action="{{ url_for('konzultacio') }}">
+      <div class="cols-3">
+        <div class="field"><label class="label">OD sph / cyl</label>
+          <input class="input tnum" name="od_sph" value="{{ f.get('od_sph','-4.00') }}">
+          <input class="input tnum" name="od_cyl" value="{{ f.get('od_cyl','0') }}"></div>
+        <div class="field"><label class="label">OS sph / cyl</label>
+          <input class="input tnum" name="os_sph" value="{{ f.get('os_sph','-3.75') }}">
+          <input class="input tnum" name="os_cyl" value="{{ f.get('os_cyl','0') }}"></div>
+        <div class="field"><label class="label">{{ t('Keret lencseátmérő (mm)') }}</label>
+          <input class="input tnum" name="frame_ed" value="{{ frame_ed }}">
+          <button class="btn btn--primary" type="submit">{{ t('Frissítés') }}</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="cols-3">
+    {% for tier in tiers %}
+    <div class="card{% if tier.recommended %} card--accent{% endif %}">
+      <div class="card__header">
+        <div>
+          <div class="eyebrow">{{ tier.label }}{% if tier.recommended %} · {{ t('ajánljuk') }}{% endif %}</div>
+          <h2 class="card__title">{{ tier.family }}</h2>
+          <p class="card__subtitle">{{ tier.supplier }} · index {{ tier.index }}</p>
+        </div>
+      </div>
+      <p class="kpi__value tnum">{{ tier.gross }}</p>
+      <p class="hint">{{ t('Pár, bruttó, munkadíj nélkül') }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">{{ t('Mennyire lesz vékony a lencse?') }}</h2>
+        <p class="card__subtitle">{{ t('Becsült szélvastagság az Ön erősebbik szemére, {ed} mm-es lencseátmérőnél', ed=frame_ed) }}</p>
+      </div>
+    </div>
+    <table class="table">
+      <tbody>
+      {% for x in thick %}
+        <tr>
+          <td style="width:12%" class="tnum"><b>{{ x.index }}</b></td>
+          <td>
+            <div style="background:var(--primary-soft);border-radius:6px;height:22px;width:{{ x.bar_pct }}%;min-width:36px"></div>
+          </td>
+          <td style="width:20%" class="tnum">{{ x.edge }} mm · {{ t('súly') }} ×{{ x.weight }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">{{ t('Becsült érték — a pontos vastagságot a gyártó számítja a rendeléskor. Kisebb keret gyakran többet vékonyít, mint egy indexugrás.') }}</p>
+  </div>
+
+{% endblock %}
