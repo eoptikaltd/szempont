@@ -121,7 +121,8 @@ def load_snapshot_live() -> CatalogSnapshot:  # pragma: no cover — needs GCP c
                 refractive_index=r["refractive_index"], design=r["design"],
                 coating_code=r["coating_code"], blue_filter=r["blue_filter"],
                 retail_net_huf=r["retail_net_huf"],
-                cost_net_huf=r["cost_net_huf"], is_dormant=r["is_dormant"],
+                rank_score=float(r["rank_score"] or 0),
+                is_dormant=r["is_dormant"],
             ) for r in it]
             return rows_to_snapshot(rows, it[0]["catalog_version"])
     except Exception:
