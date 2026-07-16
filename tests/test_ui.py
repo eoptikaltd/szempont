@@ -33,12 +33,16 @@ def test_finder_dormant_pill_and_choice_group_chips():
     assert "HOY-NLX-174-PREM-70" in b        # dormant family still offered...
     assert "alvó SKU" in b                   # ...with the muted pill (ruling 10)
     assert "Tükrös bevonat" in b and 'name="cg_0"' in b  # D5 chips render
-    assert "EYT-SUN-150-HMC-65" not in b     # mandatory choice unsatisfied
+    # review fix: unconfigured sun lens listed as a flagged from-price
+    assert "EYT-SUN-150-HMC-65" in b
+    assert "ártól — opció választandó" in b
+    assert "opt=mirror_blue" in b            # rep pick carried into quote link
 
 
 def test_finder_choice_group_selection_prices_sun_lens():
     b = c().get("/?od_sph=-2&os_sph=-2&cg_0=mirror_blue").data.decode()
     assert "EYT-SUN-150-HMC-65" in b
+    assert "ártól — opció választandó" not in b   # configured -> exact price
     # 2 x (9900 + 9000) = 37800 net -> 48006 gross
     assert "48 006" in b
 
@@ -66,3 +70,19 @@ def test_quote_curated_discount_applied_and_gated():
     assert "Jóváhagyta" in gated             # approval noted on-page (M5: real gate)
     unknown = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=NOPE").data.decode()
     assert "ismeretlen kedvezmény" in unknown
+
+
+def test_auto_approved_gated_discount_emits_marked_audit_event():
+    # Review ruling (2026-07-16): every pre-M5 auto-approval must be audited.
+    from app.app import AUDIT_EVENTS
+    AUDIT_EVENTS.clear()
+    c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=DOLG25")
+    assert len(AUDIT_EVENTS) == 1
+    ev = AUDIT_EVENTS[0]
+    assert ev["event_type"] == "discount"
+    assert ev["actor"] == "sabie.valner"
+    assert '"marker": "auto_approved_pre_m5"' in ev["payload"]
+    assert '"discount_config_id": "DOLG25"' in ev["payload"]
+    AUDIT_EVENTS.clear()
+    c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=TORZS10")  # not gated
+    assert AUDIT_EVENTS == []

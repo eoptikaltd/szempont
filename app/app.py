@@ -30,6 +30,7 @@ from app.discounts import get_discount_config, load_discount_configs  # noqa: E4
 from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
                             apply_discount, build_quote_record, invoice_lines,
                             totals)
+from quotes.store import discount_audit_event                    # noqa: E402
 from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
 
 app = Flask(__name__)
@@ -47,6 +48,14 @@ if os.environ.get("SZEMPONT_FRAMES") == "unas":  # pragma: no cover
     FRAMES = UnasFrameSource(api_key=os.environ["UNAS_API_KEY"])
 else:
     FRAMES = DemoFrameSource()
+
+# Pre-M5 audit shim: events collected in-process; staging loads them to
+# szempont.audit_log (same row shape) through the BQ store path.
+AUDIT_EVENTS: list[dict] = []
+
+
+def _emit_audit(event: dict) -> None:
+    AUDIT_EVENTS.append(event)
 
 with open(os.path.join(HERE, "nav.json"), encoding="utf-8") as fh:
     NAV = json.load(fh)
@@ -147,9 +156,12 @@ def finder():
         "sku_l": p.left.sku,
         "dormant_r": p.right_dormant,       # ruling 10: muted pill
         "dormant_l": p.left_dormant,
+        "needs_config": p.needs_configuration,   # D5 from-price flag
         "gross": huf(p.pair_retail_gross),
+        # quote link carries the representative picks so the quote page opens
+        # priced exactly as listed (the optician can re-chip from the finder)
         "quote_url": url_for("quote", sku_r=p.right.sku, sku_l=p.left.sku,
-                             opt=sorted(options)),
+                             opt=sorted(options | p.representative_codes)),
     } for p in pairs]
 
     # D5: mandatory-choice surcharges render as one-of chip groups; the rest
@@ -221,12 +233,20 @@ def quote():
             discount_error = f"ismeretlen kedvezmény: {discount_id}"
         else:
             try:
-                # Approval UI is M5 (permissions); the operator on the
-                # profile chip approves for now, audited on save.
+                # Approval UI is M5 (permissions); until then the operator on
+                # the profile chip auto-approves — EVERY such approval is
+                # audited with the auto_approved_pre_m5 marker (review ruling
+                # 2026-07-16).
                 record = apply_discount(
                     record, cfg,
                     approved_by=ACTOR if cfg.requires_approval else None)
                 applied_config = cfg
+                if cfg.requires_approval:
+                    import uuid
+                    _emit_audit(discount_audit_event(
+                        record, uuid.uuid4().hex,
+                        dt.datetime.now(dt.timezone.utc).isoformat(),
+                        marker="auto_approved_pre_m5"))
             except QuoteError as e:
                 discount_error = str(e)
 

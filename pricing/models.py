@@ -181,3 +181,6 @@ class SearchQuery:
 class SearchResult:
     lens: LensProduct
     quote: Quote
+    needs_configuration: bool = False   # D5 from-price: quote priced with the
+                                        # cheapest member of each mandatory
+                                        # choice group as representative

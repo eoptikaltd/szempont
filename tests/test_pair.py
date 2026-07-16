@@ -71,9 +71,9 @@ def test_dormant_flags_propagate_per_eye():
     assert p.right_dormant is True and p.left_dormant is False
 
 
-def test_family_with_unsatisfied_choice_group_is_skipped_not_crashed():
-    # D5: a family whose mandatory choice group has no selection cannot be
-    # priced — the pair finder must skip it, not raise.
+def choice_group_snapshot():
+    """test_pricing snapshot with the Hoya lens carrying a mandatory choice
+    group of two mirror colors, gold cheaper than blue."""
     import dataclasses
     from pricing.models import CatalogSnapshot, Surcharge
     from tests.test_pricing import snapshot
@@ -81,19 +81,48 @@ def test_family_with_unsatisfied_choice_group_is_skipped_not_crashed():
     sc = dict(base.surcharges)
     sc["mirror_blue"] = Surcharge("mirror_blue", "e-mirror Kék", D("9000"),
                                   D("3000"), choice_group="sun")
-    sc["mirror_gold"] = Surcharge("mirror_gold", "e-mirror Arany", D("9000"),
+    sc["mirror_gold"] = Surcharge("mirror_gold", "e-mirror Arany", D("8000"),
                                   D("3000"), choice_group="sun")
     lenses = dict(base.lenses)
     lenses["HOY-160-HMC-70"] = dataclasses.replace(
         lenses["HOY-160-HMC-70"],
         available_surcharges=("mirror_blue", "mirror_gold"))
-    snap = CatalogSnapshot(catalog_version="cg", lenses=lenses, surcharges=sc,
+    return CatalogSnapshot(catalog_version="cg", lenses=lenses, surcharges=sc,
                            vat_rate=D("0.27"))
+
+
+def test_choice_group_family_listed_as_from_price():
+    # D5 review fix (2026-07-16): with no group member selected the family
+    # still appears, priced by the CHEAPEST member and flagged.
+    snap = choice_group_snapshot()
     rx = EyeRx(D("-2"))
-    no_pick = find_pair_options(snap, rx, rx, quote_date="2026-07-12")
-    assert no_pick and not any(
-        p.right.sku == "HOY-160-HMC-70" for p in no_pick)
+    pairs = find_pair_options(snap, rx, rx, quote_date="2026-07-12")
+    hoya = next(p for p in pairs if p.right.sku == "HOY-160-HMC-70")
+    assert hoya.needs_configuration is True
+    assert hoya.representative_codes == frozenset({"mirror_gold"})  # cheapest
+    assert hoya.pair_retail_net == D("52000")          # 2 x (18000 + 8000)
+    others = [p for p in pairs if p.right.sku != "HOY-160-HMC-70"]
+    assert others and all(not p.needs_configuration for p in others)
+
+
+def test_choice_group_family_priced_exactly_when_member_selected():
+    snap = choice_group_snapshot()
+    rx = EyeRx(D("-2"))
     picked = find_pair_options(snap, rx, rx, quote_date="2026-07-12",
                                option_codes=frozenset({"mirror_blue"}))
     assert [p.right.sku for p in picked] == ["HOY-160-HMC-70"]
+    assert picked[0].needs_configuration is False
+    assert picked[0].representative_codes == frozenset()
     assert picked[0].pair_retail_net == D("54000")     # 2 x (18000 + 9000)
+
+
+def test_search_lists_choice_group_family_as_from_price():
+    from pricing.models import SearchQuery
+    from pricing.search import search
+    snap = choice_group_snapshot()
+    results = search(snap, SearchQuery(sph=D("-2")), quote_date="2026-07-12")
+    hoya = next(r for r in results if r.lens.sku == "HOY-160-HMC-70")
+    assert hoya.needs_configuration is True
+    assert hoya.quote.unit_retail_net == D("26000")    # 18000 + cheapest 8000
+    assert all(not r.needs_configuration for r in results
+               if r.lens.sku != "HOY-160-HMC-70")

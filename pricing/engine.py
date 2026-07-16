@@ -51,6 +51,31 @@ def _resolve_override(
     return max(candidates, key=lambda o: (o.valid_from, o.override_id))
 
 
+def representative_options(
+    snapshot: CatalogSnapshot, lens, option_codes: frozenset[str]
+) -> tuple[frozenset[str], bool]:
+    """D5 finder helper (review fix 2026-07-16): a lens with mandatory choice
+    groups must still be LISTABLE before configuration. For each offered
+    group the selection does not satisfy, pick the cheapest member (code
+    tiebreak) as a representative, so finders can show a from-price flagged
+    as needs-configuration. The engine's exactly-one rule stays frozen —
+    this only builds a representative selection for display pricing.
+
+    Returns (augmented option set, needs_configuration).
+    """
+    groups: dict[str, list] = {}
+    for code in lens.available_surcharges:
+        sc = snapshot.surcharges.get(code)
+        if sc is not None and sc.choice_group:
+            groups.setdefault(sc.choice_group, []).append(sc)
+    added: set[str] = set()
+    for members in groups.values():
+        if not any(m.code in option_codes for m in members):
+            cheapest = min(members, key=lambda m: (m.retail_net, m.code))
+            added.add(cheapest.code)
+    return frozenset(option_codes) | added, bool(added)
+
+
 def price_quote(snapshot: CatalogSnapshot, request: QuoteRequest) -> Quote:
     if not request.quote_date:
         raise PricingError("quote_date is required (ISO date)")

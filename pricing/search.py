@@ -11,7 +11,7 @@ skipped (they are not candidates for this configuration).
 
 from __future__ import annotations
 
-from .engine import PricingError, price_quote
+from .engine import PricingError, price_quote, representative_options
 from .models import (
     CatalogSnapshot,
     LensProduct,
@@ -54,21 +54,24 @@ def search(
             continue
         if not option_codes <= set(lens.available_surcharges):
             continue  # can't be configured as requested
+        # D5 (review fix 2026-07-16): unsatisfied mandatory groups priced by
+        # their cheapest member -> candidate listed as a flagged from-price.
+        rep_opts, rep = representative_options(snapshot, lens, option_codes)
         try:
             quote = price_quote(
                 snapshot,
                 QuoteRequest(
                     sku=lens.sku,
-                    option_codes=option_codes,
+                    option_codes=rep_opts,
                     quote_date=quote_date,
                     quantity=quantity,
                 ),
             )
         except PricingError:
-            # D5: mandatory choice group unsatisfied — not a candidate for
-            # this configuration.
+            # backstop (e.g. two members of one group selected upstream)
             continue
-        results.append(SearchResult(lens=lens, quote=quote))
+        results.append(SearchResult(lens=lens, quote=quote,
+                                    needs_configuration=rep))
 
     # Ordering (ruling 2026-07-16): precomputed rank_score desc (no margin data
     # in Szempont), then retail asc, then sku for determinism.

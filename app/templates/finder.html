@@ -95,7 +95,7 @@
           <td>{{ r.supplier }}</td>
           <td class="tnum">{{ r.index }}</td>
           <td class="tnum">{{ r.dia }}</td>
-          <td class="tnum">{{ r.gross }}{% if loop.first %} {{ ui.pill(t('ajánlott'), 'success') }}{% endif %}</td>
+          <td class="tnum">{{ r.gross }}{% if loop.first %} {{ ui.pill(t('ajánlott'), 'success') }}{% endif %}{% if r.needs_config %} {{ ui.pill(t('from price — option to choose'), 'warning') }}{% endif %}</td>
           <td><a class="btn btn--soft btn--sm" href="{{ r.quote_url }}">{{ t('Quote') }}</a></td>
         </tr>
       {% endfor %}

@@ -69,19 +69,27 @@ def _discount_changed(prev: QuoteRecord | None, cur: QuoteRecord) -> bool:
 
 
 def discount_audit_event(record: QuoteRecord, event_id: str,
-                         occurred_at: str) -> dict:
-    """szempont.audit_log row for a discount grant/change (code standard)."""
+                         occurred_at: str, marker: str | None = None) -> dict:
+    """szempont.audit_log row for a discount grant/change (code standard).
+
+    marker: extra provenance flag in the payload — e.g. 'auto_approved_pre_m5'
+    when the UI approved a gated discount itself because the M5 permission
+    system has not shipped yet (review ruling 2026-07-16).
+    """
+    payload = {
+        "quote_id": record.quote_id,
+        "revision": record.revision,
+        "discount_config_id": record.discount_config_id,
+        "discount_net": str(record.discount_net),
+        "approved_by": record.discount_approved_by,
+    }
+    if marker:
+        payload["marker"] = marker
     return {
         "event_id": event_id,
         "event_type": "discount",
         "actor": record.discount_approved_by or record.created_by,
-        "payload": json.dumps({
-            "quote_id": record.quote_id,
-            "revision": record.revision,
-            "discount_config_id": record.discount_config_id,
-            "discount_net": str(record.discount_net),
-            "approved_by": record.discount_approved_by,
-        }, ensure_ascii=False),
+        "payload": json.dumps(payload, ensure_ascii=False),
         "occurred_at": occurred_at,
     }
 
