@@ -72,6 +72,92 @@ def test_quote_curated_discount_applied_and_gated():
     assert "ismeretlen kedvezmény" in unknown
 
 
+# --------------------------------------------------- wave-close review (item 5)
+def _ftok(path):
+    """Fetch a page and pull the one-time form token out of it."""
+    import re
+    body = c().get(path).data.decode()
+    return re.search(r'name="ftok" value="([0-9a-f]+)"', body).group(1)
+
+
+def test_cross_site_post_rejected_same_origin_allowed():
+    # F-W2-02: IAP authenticates the browser but does NOT stop CSRF.
+    data = {"sku_r": "HOY-NLX-160-HMC-70", "discount": "TORZS10"}
+    evil = c().post("/quote/discount", data=data,
+                    headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    evil2 = c().post("/ugyfel/walkin", data={"name": "X"},
+                     headers={"Sec-Fetch-Site": "cross-site"})
+    assert evil2.status_code == 403
+    ok = c().post("/quote/discount", data=data,
+                  headers={"Origin": "http://localhost"})
+    assert ok.status_code == 302
+    assert c().post("/quote/discount", data=data).status_code == 302  # no hdr
+
+
+def test_walkin_double_submit_replays_first_z1():
+    # F-W2-07: double click / retry must not mint a second Z1 person.
+    from urllib.parse import parse_qs, urlparse
+    tok = _ftok("/ugyfel")
+    data = {"ftok": tok, "name": "Dupla Dénes"}
+    first = c().post("/ugyfel/walkin", data=data)
+    second = c().post("/ugyfel/walkin", data=data)
+    z1 = parse_qs(urlparse(first.headers["Location"]).query)["person"][0]
+    z2 = parse_qs(urlparse(second.headers["Location"]).query)["person"][0]
+    assert z1 == z2 and z1.startswith("Z1-")
+    from app.app import WALKINS
+    assert sum(1 for w in WALKINS._walkins.values()
+               if w.display_name == "Dupla Dénes") == 1
+
+
+def test_gated_discount_double_post_emits_one_audit_event():
+    from app.app import AUDIT_EVENTS
+    AUDIT_EVENTS.clear()
+    tok = _ftok("/quote?sku=HOY-NLX-160-HMC-70")
+    data = {"ftok": tok, "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25"}
+    assert c().post("/quote/discount", data=data).status_code == 302
+    assert c().post("/quote/discount", data=data).status_code == 302
+    assert len(AUDIT_EVENTS) == 1
+
+
+def test_hostile_names_escaped_everywhere():
+    # F-W2-03: autoescape must hold on every surface a name reaches.
+    from app.app import WALKINS
+    from iris import new_walkin
+    WALKINS.save(new_walkin(display_name="<script>alert(1)</script>Béla",
+                            created_by="t", token_fn=lambda: "Z1-xss",
+                            now_fn=lambda: "T0"))
+    for path in ("/?person=Z1-xss",
+                 "/quote?sku=HOY-NLX-160-HMC-70&person=Z1-xss",
+                 "/print/munkalap?sku_r=HOY-NLX-160-HMC-70&person=Z1-xss",
+                 "/print/latasvizsgalat?name=%3Cscript%3Ealert(1)%3C/script%3E"):
+        body = c().get(path).data.decode()
+        assert "<script>alert" not in body, path
+        assert "&lt;script&gt;" in body, path
+
+
+def test_konzultacio_basket_equals_quote_page_total():
+    # F-W2-01: one money path — the customer screen and the operator quote
+    # show the same gross for the same configuration.
+    konz = c().get("/konzultacio?od_sph=-2&os_sph=-2&tier=Alap"
+                   "&frame=FRM-EO-CLASS-01").data.decode()
+    quote = c().get("/quote?sku_r=EYT-ALAP-150-HARD-65"
+                    "&sku_l=EYT-ALAP-150-HARD-65"
+                    "&frame=FRM-EO-CLASS-01").data.decode()
+    total = "42 164 Ft"     # huf() uses narrow no-break spaces
+    assert total in konz and total in quote
+
+
+def test_print_routes_accept_post_for_sensitive_data():
+    # F-W2-04: Rx/health values POSTed stay out of request logs.
+    r = c().post("/print/latasvizsgalat",
+                 data={"name": "Kovács Éva", "ar_j_sph": "−6.75"},
+                 headers={"Origin": "http://localhost"})
+    assert r.status_code == 200
+    b = r.data.decode()
+    assert "Kovács Éva" in b and "−6.75" in b
+
+
 # ------------------------------------------------------------ W2 item 4 (M2C)
 def test_konzultacio_basket_always_visible_with_tier_and_frame():
     b = c().get("/konzultacio?od_sph=-2&os_sph=-2").data.decode()

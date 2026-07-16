@@ -94,6 +94,7 @@
         {% if discount_error %}<p class="hint status--danger">{{ discount_error }}</p>{% endif %}
         {# POST apply path: audit happens here, never on page render #}
         <form method="post" action="{{ url_for('quote_discount') }}">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
           {% for k, v in base_params.items() if v and k not in ('opt', 'discount') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
           {% for o in base_params.opt %}<input type="hidden" name="opt" value="{{ o }}">{% endfor %}
           {% for c in discount_configs %}

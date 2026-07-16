@@ -29,8 +29,8 @@ from app.barcodes import code128_svg, ean13_svg                  # noqa: E402
 from app.catalog import load_snapshot, tint_swatches             # noqa: E402
 from app.discounts import get_discount_config, load_discount_configs  # noqa: E402
 from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
-                            apply_discount, build_quote_record, invoice_lines,
-                            totals)
+                            apply_discount, build_quote_record,
+                            gross_line_allocation, invoice_lines, totals)
 from quotes.store import discount_audit_event                    # noqa: E402
 from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
 from iris import (FixturePersonDirectory, InMemoryWalkinStore,   # noqa: E402
@@ -89,6 +89,55 @@ AUDIT_EVENTS: list[dict] = []
 
 def _emit_audit(event: dict) -> None:
     AUDIT_EVENTS.append(event)
+
+
+# ---- pre-M5 web hardening (F-W2-02 / F-W2-07) -------------------------------
+# IAP covers WHO reaches the app (perimeter authN); it does NOT stop CSRF —
+# the IAP cookie rides along on cross-site POSTs — nor XSS, nor roles (M5).
+# Minimal guards until M5: (1) same-origin check on every POST; (2) one-time
+# form tokens that double as replay keys, so a double-submit (retry, double
+# click) replays the FIRST result instead of writing twice.
+from collections import OrderedDict                              # noqa: E402
+from urllib.parse import urlparse as _urlparse                   # noqa: E402
+
+_UNUSED = object()
+_FORM_TOKENS: "OrderedDict[str, object]" = OrderedDict()  # token -> _UNUSED | result
+_FORM_TOKEN_CAP = 1000
+
+
+@app.before_request
+def _same_origin_guard():
+    if request.method != "POST":
+        return None
+    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return "cross-site POST elutasítva", 403
+    src = request.headers.get("Origin") or request.headers.get("Referer")
+    if src and _urlparse(src).netloc and _urlparse(src).netloc != request.host:
+        return "cross-site POST elutasítva", 403
+    return None
+
+
+def issue_form_token() -> str:
+    import uuid
+    tok = uuid.uuid4().hex
+    _FORM_TOKENS[tok] = _UNUSED
+    while len(_FORM_TOKENS) > _FORM_TOKEN_CAP:
+        _FORM_TOKENS.popitem(last=False)
+    return tok
+
+
+def token_replay_result(tok: str | None) -> object:
+    """The stored first result if this token was already used, else None.
+    Check BEFORE performing the write; unknown/absent tokens (non-browser
+    client, expired) count as fresh, untracked."""
+    if tok and tok in _FORM_TOKENS and _FORM_TOKENS[tok] is not _UNUSED:
+        return _FORM_TOKENS[tok]
+    return None
+
+
+def token_mark_used(tok: str | None, result: object) -> None:
+    if tok and _FORM_TOKENS.get(tok) is _UNUSED:
+        _FORM_TOKENS[tok] = result
 
 with open(os.path.join(HERE, "nav.json"), encoding="utf-8") as fh:
     NAV = json.load(fh)
@@ -192,7 +241,8 @@ def ugyfel():
     q = request.args.get("q", "").strip()
     results = DIRECTORY.search(q) if q else []
     return render_template("ugyfel.html", page_title="Ügyfél", q=q,
-                           results=results, searched=bool(q))
+                           results=results, searched=bool(q),
+                           ftok=issue_form_token())
 
 
 @app.route("/ugyfel/walkin", methods=["POST"])
@@ -201,6 +251,11 @@ def ugyfel_walkin():
     hard rule 4), saves to szempont.walkin_persons, and continues straight
     to the finder so the walk-in never blocks a sale."""
     f = request.form
+    # F-W2-07: a double-submit replays the FIRST walk-in instead of minting
+    # a second Z1 token for the same person.
+    prior_token = token_replay_result(f.get("ftok"))
+    if prior_token is not None:
+        return redirect(url_for("finder", person=prior_token))
     try:
         w = new_walkin(
             display_name=f.get("name", ""), created_by=current_operator(),
@@ -214,9 +269,10 @@ def ugyfel_walkin():
             dm_ok=bool(f.get("dm_ok")))
     except ValueError as e:
         return render_template("ugyfel.html", page_title="Ügyfél", q="",
-                               results=[], searched=False,
-                               walkin_error=str(e)), 400
+                               results=[], searched=False, walkin_error=str(e),
+                               ftok=issue_form_token()), 400
     WALKINS.save(w)
+    token_mark_used(f.get("ftok"), w.z1_token)
     return redirect(url_for("finder", person=w.z1_token))
 
 
@@ -330,8 +386,10 @@ def quote_discount():
     discount_id = f.get("discount", "")
     today = dt.date.today().isoformat()
 
+    ftok = f.get("ftok")
     cfg = get_discount_config(discount_id) if discount_id else None
-    if cfg is not None and cfg.requires_approval:
+    if (cfg is not None and cfg.requires_approval
+            and token_replay_result(ftok) is None):  # F-W2-07: no double audit
         try:
             *_, record = _preview_record(sku_r, sku_l, options, frame_sku,
                                          person, today)
@@ -342,6 +400,7 @@ def quote_discount():
                 record, uuid.uuid4().hex,
                 dt.datetime.now(dt.timezone.utc).isoformat(),
                 marker="auto_approved_pre_m5"))
+            token_mark_used(ftok, discount_id)
         except (PricingError, QuoteError):
             pass  # the GET view renders the error; nothing was approved
     return redirect(url_for("quote", sku_r=sku_r, sku_l=sku_l,
@@ -428,6 +487,7 @@ def quote():
         approved_by_display=(operator_display(record.discount_approved_by)
                              if record.discount_approved_by else None),
         base_params=base_params, person_view=_person_view(person),
+        ftok=issue_form_token(),
     )
 
 
@@ -523,11 +583,11 @@ def konzultacio():
             *_, record = _preview_record(chosen.right.sku, chosen.left.sku,
                                          options, frame_sku, person, today)
             t_ = totals(record)
-            one = 1 + record.vat_rate
+            # F-W2-01: per-line gross via the shared allocation — the lines
+            # sum EXACTLY to the A1 total, one money path with /quote.
             basket = {
-                "lines": [{"name": l.name,
-                           "gross": huf((l.net * one).quantize(Decimal("1")))}
-                          for l in invoice_lines(record)],
+                "lines": [{"name": l.name, "gross": huf(g)}
+                          for l, g in gross_line_allocation(record)],
                 "total": huf(t_.total_retail_gross),
                 "tint": tint or None,
                 "quote_url": url_for(
@@ -616,14 +676,16 @@ def _person_print_fields(person: str) -> dict:
     }
 
 
-@app.route("/print/munkalap")
+@app.route("/print/munkalap", methods=["GET", "POST"])
 def print_munkalap():
     """Lab glazing sheet — design-frozen template, data wired in (item 4b).
     Real Code-128 (order, lens SKUs) and EAN-13 (frame GTIN) inline SVGs
     replace the CSS placeholder stripes. Centration fields left blank when
-    not passed — the sheet stays pencil-friendly by design."""
+    not passed — the sheet stays pencil-friendly by design.
+    POST supported (F-W2-04): Rx values in a POST body stay out of request
+    logs; real print flows must POST, GET remains for links/demos."""
     snap = load_snapshot()
-    a = request.args.get
+    a = request.values.get
     sku_r = a("sku_r") or a("sku", "")
     sku_l = a("sku_l") or sku_r
     lens_r, lens_l = snap.lenses.get(sku_r), snap.lenses.get(sku_l)
@@ -709,17 +771,19 @@ DEMO_EXAM = {
 }
 
 
-@app.route("/print/latasvizsgalat")
+@app.route("/print/latasvizsgalat", methods=["GET", "POST"])
 def print_latasvizsgalat():
     """Exam-result + suggested-correction sheet — design-frozen template.
     PURE PASS-THROUGH: values exist only in this request; Szempont stores no
     Rx/health data (hard rule 5 — IRIS owns it, M6 reads via contract).
-    ?demo=1 renders the mockup's sample for layout verification. Person
-    fields prefill from the directory/walk-in when ?person= is given."""
-    d = {k: v for k, v in request.args.items() if k not in ("demo", "person")}
-    if request.args.get("demo") == "1":
+    POST supported (F-W2-04): health data in a POST body stays out of
+    request logs — the future exam UI MUST POST here; GET is for the ?demo=1
+    layout check. Person fields prefill from the directory/walk-in."""
+    d = {k: v for k, v in request.values.items()
+         if k not in ("demo", "person")}
+    if request.values.get("demo") == "1":
         d = {**DEMO_EXAM, **d}
-    person = request.args.get("person", "").strip()
+    person = request.values.get("person", "").strip()
     if person:
         p = _person_print_fields(person)
         d.setdefault("name", p["name"])

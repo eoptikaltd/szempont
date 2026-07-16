@@ -60,6 +60,14 @@ def validate_for_save(record: QuoteRecord) -> None:
                              "'config' or 'override'")
 
 
+def _same_content(a: QuoteRecord, b: QuoteRecord) -> bool:
+    """Equality modulo the store-assigned fields (revision, saved_at) —
+    F-W2-07: re-saving an unchanged quote must be a no-op, not a new row."""
+    import dataclasses
+    norm = lambda r: dataclasses.replace(r, revision=0, saved_at="")  # noqa: E731
+    return norm(a) == norm(b)
+
+
 def _discount_changed(prev: QuoteRecord | None, cur: QuoteRecord) -> bool:
     if cur.discount_net == 0 and cur.discount_config_id is None:
         return False
@@ -108,6 +116,8 @@ class InMemoryQuoteStore:
         validate_for_save(record)
         prev_revs = self._revs.setdefault(record.quote_id, [])
         prev = prev_revs[-1] if prev_revs else None
+        if prev is not None and _same_content(prev, record):
+            return prev                     # F-W2-07: unchanged -> no-op
         rev = dataclasses.replace(record, revision=len(prev_revs),
                                   saved_at=self._now())
         if _discount_changed(prev, rev):
@@ -177,6 +187,8 @@ class BQQuoteStore:  # pragma: no cover — exercised in staging against real BQ
         import dataclasses
         validate_for_save(record)
         prev = self.load(record.quote_id)
+        if prev is not None and _same_content(prev, record):
+            return prev                     # F-W2-07: unchanged -> no-op
         rev = dataclasses.replace(
             record,
             revision=(prev.revision + 1) if prev else 0,

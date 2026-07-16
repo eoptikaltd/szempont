@@ -309,16 +309,43 @@ def test_append_only_revisions():
 
 
 # ------------------------------------------------------------------ BQ serde
-DDL_QUOTES_COLUMNS = {
-    "quote_id", "catalog_version", "quote_date", "person_id", "status",
-    "lines", "payer_type", "payer_name", "payer_member_name",
-    "payer_member_id", "payer_billing_address", "vat_rate",
-    "total_retail_net", "total_retail_gross", "discount_net",
-    "discount_approved_by", "created_by", "created_at", "converted_order_id",
-    # DDL v2 (002_w2_rulings.sql):
-    "offer_set_id", "variant_label", "discount_config_id", "revision",
-    "saved_at",
-}
+def ddl_quotes_columns():
+    """Parse the ACTUAL DDL files (F-W2-05): this test fails when either the
+    DDL or the serializer changes without the other."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    field = re.compile(r"\b([a-z_][a-z0-9_]*)\s+"
+                       r"(?:STRING|INT64|NUMERIC|BOOL|DATE|TIMESTAMP|JSON|"
+                       r"FLOAT64)\b")
+    ddl1 = (root / "infra/ddl/001_szempont_dataset.sql").read_text()
+    block = re.search(
+        r"CREATE TABLE IF NOT EXISTS `szempont\.quotes` \((.*?)\n\)",
+        ddl1, re.S).group(1)
+    cols, struct = set(), set()
+    depth = 0
+    for raw in block.splitlines():
+        line = raw.split("--")[0].strip()
+        if not line:
+            continue
+        names = set(field.findall(line))
+        if depth == 0:
+            cols |= names
+            m = re.match(r"([a-z_]+)\s+ARRAY<", line)
+            if m:
+                cols.add(m.group(1))
+        else:
+            struct |= names
+        depth += line.count("<") - line.count(">")
+    ddl2 = (root / "infra/ddl/002_w2_rulings.sql").read_text()
+    for name in re.findall(
+            r"ALTER TABLE `szempont\.quotes`\s+"
+            r"ADD COLUMN IF NOT EXISTS\s+([a-z_.]+)", ddl2):
+        if "." in name:
+            struct.add(name.split(".", 1)[1])
+        else:
+            cols.add(name)
+    return cols, struct
 
 
 def test_bq_row_matches_ddl_and_roundtrips():
@@ -328,10 +355,50 @@ def test_bq_row_matches_ddl_and_roundtrips():
             payer_type="health_fund", payer_name="OTP Egészségpénztár",
             payer_member_id="EP-1")), cfg()))
     row = to_bq_row(r)
-    assert set(row) == DDL_QUOTES_COLUMNS
+    ddl_cols, ddl_struct = ddl_quotes_columns()
+    assert set(row) == ddl_cols                        # F-W2-05: no drift
+    assert set(row["lines"][0]) == ddl_struct
     assert row["total_retail_net"] == "61560"          # NUMERIC as string
     assert row["lines"][3]["name"] == "Szemüvegkészítés munkadíj"  # diacritics
     assert from_bq_row(row) == r                       # lossless roundtrip
+
+
+# ------------------------------------------------- wave-close review additions
+def test_gross_line_allocation_sums_exactly_to_a1_total():
+    # F-W2-01: naive per-line rounding drifts from the once-rounded total.
+    from quotes import gross_line_allocation
+    from decimal import ROUND_HALF_UP
+    r = rec(engine_quotes=[], frame=None, auto_services=[],
+            services=[ServiceLine("Igazítás", D("10")),
+                      ServiceLine("Tisztítás", D("10")),
+                      ServiceLine("Vésés", D("10"))],
+            catalog_version="v", vat_rate=D("0.27"))
+    t = totals(r)
+    assert t.total_retail_gross == D("38")             # 30 * 1.27 = 38.1 -> 38
+    naive = sum((l.net * D("1.27")).quantize(D("1"), rounding=ROUND_HALF_UP)
+                for l in r.lines)
+    assert naive == D("39")                            # the drift being fixed
+    alloc = gross_line_allocation(r)
+    assert sum(g for _, g in alloc) == t.total_retail_gross
+    # holds with a discount and with removed lines too
+    r2 = apply_discount(rec(), cfg())
+    assert sum(g for _, g in gross_line_allocation(r2)) == \
+        totals(r2).total_retail_gross
+    r3 = remove_line(rec(), 3)
+    alloc3 = gross_line_allocation(r3)
+    assert all(l.name != "Szemüvegkészítés munkadíj" for l, _ in alloc3)
+    assert sum(g for _, g in alloc3) == totals(r3).total_retail_gross
+
+
+def test_resave_unchanged_quote_is_noop():
+    # F-W2-07: refresh/retry of an unchanged save appends nothing.
+    store = InMemoryQuoteStore(now_fn=counter_clock())
+    r0 = store.save(rec())
+    assert store.save(r0) is r0                        # same object back
+    assert store.save(rec()).revision == 0             # rebuilt, same content
+    assert len(store.revisions("Q1")) == 1
+    r1 = store.save(edit_line(r0, 3, unit_retail_net=D("5000")))
+    assert r1.revision == 1 and len(store.revisions("Q1")) == 2
 
 
 def test_persisted_quote_is_reproducible():

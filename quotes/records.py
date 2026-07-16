@@ -177,6 +177,33 @@ def invoice_lines(record: QuoteRecord) -> tuple[QuoteLineRec, ...]:
     return tuple(l for l in record.lines if not l.removed)
 
 
+def gross_line_allocation(
+        record: QuoteRecord) -> tuple[tuple[QuoteLineRec, Decimal], ...]:
+    """Customer-facing per-line gross figures that sum EXACTLY to the A1
+    total (F-W2-01): rounding each line's gross independently can drift from
+    the once-rounded quote total by ±1 Ft per line. Largest-remainder
+    allocation of totals().total_retail_gross across the non-removed lines,
+    pro-rata by line net, closes the gap — every UI that shows per-line gross
+    goes through here, so lines can never disagree with the quote total."""
+    from decimal import ROUND_FLOOR
+    t = totals(record)
+    lines = invoice_lines(record)
+    if not lines:
+        return ()
+    if t.basket_net == 0:
+        out = [(l, _ZERO) for l in lines]
+        return ((lines[0], t.total_retail_gross),) + tuple(out[1:]) \
+            if t.total_retail_gross else tuple(out)
+    raw = [l.net * t.total_retail_gross / t.basket_net for l in lines]
+    floors = [r.quantize(_HUF, rounding=ROUND_FLOOR) for r in raw]
+    remainder = int(t.total_retail_gross - sum(floors))
+    order = sorted(range(len(lines)), key=lambda i: raw[i] - floors[i],
+                   reverse=True)
+    for i in order[:remainder]:
+        floors[i] += 1
+    return tuple(zip(lines, floors))
+
+
 # -------------------------------------------------------------------- builder
 def _lines_from_engine(eye: str | None, q: Quote) -> list[QuoteLineRec]:
     prefix = f"{eye} · " if eye else ""

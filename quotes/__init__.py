@@ -12,6 +12,7 @@ from .records import (  # noqa: F401
     build_quote_record,
     edit_line,
     from_bq_row,
+    gross_line_allocation,
     invoice_lines,
     remove_line,
     restore_line,

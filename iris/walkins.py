@@ -128,6 +128,8 @@ class BQWalkinStore:  # pragma: no cover — staging, real BQ
 
     def save(self, w: WalkinPerson) -> WalkinPerson:
         from google.cloud import bigquery
+        if self.get(w.z1_token) is not None:   # F-W2-07: never rewrite/dupe
+            raise ValueError(f"walk-in {w.z1_token} already exists")
         job = self.client.load_table_from_json(
             [walkin_to_bq_row(w)], self.WALKINS,
             job_config=bigquery.LoadJobConfig(
