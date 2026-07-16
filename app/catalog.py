@@ -20,12 +20,13 @@ def load_snapshot() -> CatalogSnapshot:
     # catalog is ingested; keep the return type identical.
     sv = RxRange(D("-8"), D("6"), D("0"), D("4"))
     lenses = {}
-    def add(sku, sup, code, name, design, idx, dia, tier, photo, retail, cost, surch, rank='0'):
+    def add(sku, sup, code, name, design, idx, dia, tier, photo, retail, cost,
+            surch, rank='0', dormant=False):
         lenses[sku] = LensProduct(
             sku=sku, supplier=sup, supplier_code=code, name=name, design=design,
             index=D(idx), diameter_mm=dia, coating_tier=tier, photochromic=photo,
             rx_range=sv, base_retail_net=D(retail), base_cost_net=D(cost),
-            available_surcharges=surch)
+            available_surcharges=surch, rank_score=D(rank), is_dormant=dormant)
     add("HOY-NLX-150-HMC-70", "hoya", "H1101", "Hoya Nulux 1.50 HMC",
         LensDesign.SINGLE_VISION, "1.50", 70, CoatingTier.HMC, False,
         "12500", "5000", ("photochromic", "tint_solid", "prizma"))
@@ -50,11 +51,23 @@ def load_snapshot() -> CatalogSnapshot:
     add("HOY-SYNC-160-PREM-70", "hoya", "H2101", "Hoya Sync III 1.60 (office)",
         LensDesign.OFFICE, "1.60", 70, CoatingTier.PREMIUM, False,
         "36500", "16800", ("photochromic",))
+    # Ruling 10: dormant SKU — sellable, muted pill in the finder.
+    add("HOY-NLX-174-PREM-70", "hoya", "H1401", "Hoya Nulux 1.74 Hi-Vision",
+        LensDesign.SINGLE_VISION, "1.74", 70, CoatingTier.PREMIUM, False,
+        "55000", "26000", ("prizma",), dormant=True)
+    # D5 choice group: sun lens — exactly one mirror color MUST be picked.
+    add("EYT-SUN-150-HMC-65", "eyetech", "ET310", "EyeTech Sun 1.50 HMC",
+        LensDesign.SINGLE_VISION, "1.50", 65, CoatingTier.HMC, False,
+        "9900", "2600", ("mirror_blue", "mirror_gold"))
 
     surcharges = {
         "photochromic": Surcharge("photochromic", "Fényre sötétedő", D("12000"), D("5000")),
         "tint_solid": Surcharge("tint_solid", "Színezés (egyszínű)", D("3500"), D("900")),
         "prizma": Surcharge("prizma", "Prizma", D("6000"), D("2400")),
+        "mirror_blue": Surcharge("mirror_blue", "e-mirror Kék", D("9000"),
+                                 D("3000"), choice_group="Tükrös bevonat"),
+        "mirror_gold": Surcharge("mirror_gold", "e-mirror Arany", D("9000"),
+                                 D("3000"), choice_group="Tükrös bevonat"),
     }
     overrides = (
         PriceOverride(sku="EYT-KOMF-160-HMC-70",
@@ -94,6 +107,7 @@ def rows_to_snapshot(rows, version: str) -> CatalogSnapshot:
             base_cost_net=D("0"),      # ruling 2026-07-16: no COGS in Szempont
             available_surcharges=(),   # EyeTech PL: no priced options yet
             rank_score=D(str(r.rank_score)),
+            is_dormant=bool(r.is_dormant),   # ruling 10: muted pill in UI
         )
     return CatalogSnapshot(catalog_version=version, lenses=lenses,
                            surcharges={}, overrides=(), vat_rate=D("0.27"))

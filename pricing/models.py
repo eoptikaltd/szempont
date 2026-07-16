@@ -88,6 +88,7 @@ class LensProduct:
     rank_score: Decimal = Decimal("0")  # precomputed recommendation rank (ruling
                                         # 2026-07-16: NO COGS/margin in Szempont;
                                         # ranking computed outside, higher = first
+    is_dormant: bool = False            # ruling 10: still sellable, muted pill in UI
 
 
 @dataclass(frozen=True, slots=True)

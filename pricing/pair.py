@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from .engine import price_quote
+from .engine import PricingError, price_quote
 from .models import CatalogSnapshot, LensProduct, QuoteRequest
 
 
@@ -76,12 +76,17 @@ def find_pair_options(
         if "R" not in fam or "L" not in fam:
             continue
         r, l = fam["R"], fam["L"]
-        qr = price_quote(snapshot, QuoteRequest(
-            sku=r.sku, option_codes=option_codes,
-            quote_date=quote_date, quantity=1))
-        ql = price_quote(snapshot, QuoteRequest(
-            sku=l.sku, option_codes=option_codes,
-            quote_date=quote_date, quantity=1))
+        try:
+            qr = price_quote(snapshot, QuoteRequest(
+                sku=r.sku, option_codes=option_codes,
+                quote_date=quote_date, quantity=1))
+            ql = price_quote(snapshot, QuoteRequest(
+                sku=l.sku, option_codes=option_codes,
+                quote_date=quote_date, quantity=1))
+        except PricingError:
+            # D5: a family whose mandatory choice group is unsatisfied by the
+            # selected options cannot be priced — it is not a candidate.
+            continue
         out.append(PairOption(
             family_key=key,
             family_name=r.name.split(", SPH")[0] if ", SPH" in r.name else r.name,
@@ -90,6 +95,7 @@ def find_pair_options(
             pair_retail_net=qr.total_retail_net + ql.total_retail_net,
             pair_retail_gross=qr.total_retail_gross + ql.total_retail_gross,
             rank_score=max(r.rank_score, l.rank_score),
+            right_dormant=r.is_dormant, left_dormant=l.is_dormant,
         ))
 
     out.sort(key=lambda p: (-p.rank_score, p.pair_retail_net, p.right.sku))

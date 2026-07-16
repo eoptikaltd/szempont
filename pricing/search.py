@@ -11,7 +11,7 @@ skipped (they are not candidates for this configuration).
 
 from __future__ import annotations
 
-from .engine import price_quote
+from .engine import PricingError, price_quote
 from .models import (
     CatalogSnapshot,
     LensProduct,
@@ -54,15 +54,20 @@ def search(
             continue
         if not option_codes <= set(lens.available_surcharges):
             continue  # can't be configured as requested
-        quote = price_quote(
-            snapshot,
-            QuoteRequest(
-                sku=lens.sku,
-                option_codes=option_codes,
-                quote_date=quote_date,
-                quantity=quantity,
-            ),
-        )
+        try:
+            quote = price_quote(
+                snapshot,
+                QuoteRequest(
+                    sku=lens.sku,
+                    option_codes=option_codes,
+                    quote_date=quote_date,
+                    quantity=quantity,
+                ),
+            )
+        except PricingError:
+            # D5: mandatory choice group unsatisfied — not a candidate for
+            # this configuration.
+            continue
         results.append(SearchResult(lens=lens, quote=quote))
 
     # Ordering (ruling 2026-07-16): precomputed rank_score desc (no margin data

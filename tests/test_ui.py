@@ -25,3 +25,44 @@ def test_pair_quote_two_skus():
 def test_quote_single_sku_backcompat_and_404():
     assert c().get("/quote?sku=HOY-NLX-160-HMC-70").status_code == 200
     assert c().get("/quote?sku_r=NOPE").status_code == 404
+
+
+# ---------------------------------------------------------- W2 item 2 additions
+def test_finder_dormant_pill_and_choice_group_chips():
+    b = c().get("/?od_sph=-2&os_sph=-2").data.decode()
+    assert "HOY-NLX-174-PREM-70" in b        # dormant family still offered...
+    assert "alvó SKU" in b                   # ...with the muted pill (ruling 10)
+    assert "Tükrös bevonat" in b and 'name="cg_0"' in b  # D5 chips render
+    assert "EYT-SUN-150-HMC-65" not in b     # mandatory choice unsatisfied
+
+
+def test_finder_choice_group_selection_prices_sun_lens():
+    b = c().get("/?od_sph=-2&os_sph=-2&cg_0=mirror_blue").data.decode()
+    assert "EYT-SUN-150-HMC-65" in b
+    # 2 x (9900 + 9000) = 37800 net -> 48006 gross
+    assert "48 006" in b
+
+
+def test_quote_auto_munkadij_and_frame_line():
+    b = c().get("/quote?sku_r=HOY-NLX-160-HMC-70&sku_l=HOY-NLX-150-HMC-70"
+                "&frame=FRM-RB-5228").data.decode()
+    assert "Szemüvegkészítés munkadíj" in b and "automatikus" in b
+    assert "Ray-Ban RB5228 fekete keret" in b
+    # 18000 + 12500 + 39000 + 4500 = 74000 net -> 93980 gross
+    assert "93 980 Ft" in b
+
+
+def test_quote_frame_search_lists_unas_hits():
+    b = c().get("/quote?sku=HOY-NLX-160-HMC-70&qf=konnyu").data.decode()
+    assert "FRM-EO-KONNYU-02" in b and "Hozzáadás" in b
+
+
+def test_quote_curated_discount_applied_and_gated():
+    # basket 2x18000 + 4500 = 40500; Törzs 10% = 4050 -> net 36450 -> gross 46292
+    b = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=TORZS10").data.decode()
+    assert "Törzsvásárlói 10%" in b
+    assert "4 050 Ft" in b and "46 292 Ft" in b
+    gated = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=DOLG25").data.decode()
+    assert "Jóváhagyta" in gated             # approval noted on-page (M5: real gate)
+    unknown = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=NOPE").data.decode()
+    assert "ismeretlen kedvezmény" in unknown

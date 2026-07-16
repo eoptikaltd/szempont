@@ -46,6 +46,22 @@
         {% endfor %}
       </div>
       {% endif %}
+      {% for g in choice_groups %}
+      {# D5 Választandó Szolgáltatás: exactly one per group, or skip those lenses #}
+      <div class="field">
+        <span class="label">{{ g.name }} · {{ t('choose exactly one — lenses requiring it are hidden otherwise') }}</span>
+        <label class="checkbox">
+          <input type="radio" name="{{ g.key }}" value="" {{ 'checked' if not g.selected }}>
+          {{ t('None') }}
+        </label>
+        {% for s in g.members %}
+        <label class="checkbox">
+          <input type="radio" name="{{ g.key }}" value="{{ s.code }}" {{ 'checked' if s.code == g.selected }}>
+          {{ s.name }} · <span class="tnum">{{ huf(s.retail_net) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
       <div class="toolbar">
         <button class="btn btn--primary" type="submit">{{ t('Find lenses') }}</button>
         <a class="btn btn--ghost" href="{{ url_for('finder') }}">{{ t('Reset') }}</a>
@@ -70,7 +86,11 @@
       {% for r in rows %}
         <tr>
           <td>{{ r.family }}
-            <div class="sub"><span class="code">OD {{ r.sku_r }}</span><br><span class="code">OS {{ r.sku_l }}</span></div>
+            {% if r.dormant_r or r.dormant_l %} {{ ui.pill(t('dormant'), 'muted') }}{% endif %}
+            <div class="sub">
+              <span class="code">OD {{ r.sku_r }}</span>{% if r.dormant_r %} {{ ui.pill(t('dormant'), 'muted') }}{% endif %}<br>
+              <span class="code">OS {{ r.sku_l }}</span>{% if r.dormant_l %} {{ ui.pill(t('dormant'), 'muted') }}{% endif %}
+            </div>
           </td>
           <td>{{ r.supplier }}</td>
           <td class="tnum">{{ r.index }}</td>

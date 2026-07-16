@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% import '_macros.html' as ui %}
-{# Szempont · Quote — detail_view. A pair (OD + OS SKUs) in depth. #}
+{# Szempont · Quote — detail_view. Lens pair + Unas frame + munkadíj + curated
+   discount, assembled through the M2 persistence record (W2 item 2). #}
 {% block content %}
 {% if error %}
   <div class="card">
@@ -18,32 +19,108 @@
   </div>
 
   <div class="kpis">
-    {{ ui.kpi(t('Pair total, gross'), q.gross, t('VAT {rate} included', rate=q.vat_rate), 'info') }}
-    {{ ui.kpi(t('Net'), q.total_net) }}
+    {{ ui.kpi(t('Total, gross'), q.gross, t('VAT {rate} included', rate=q.vat_rate), 'info') }}
+    {{ ui.kpi(t('Basket (net)'), q.basket_net) }}
+    {{ ui.kpi(t('Discount (net)'), q.discount_net, applied_config.name if applied_config else '', 'success' if applied_config else 'muted') }}
     {{ ui.kpi(t('VAT'), q.vat) }}
   </div>
 
   <div class="cols-main">
-    <div class="card">
-      <div class="card__header"><h2 class="card__title">{{ t('Price build-up (net)') }}</h2></div>
-      <table class="table">
-        <thead><tr><th></th><th>{{ t('Item') }}</th><th>{{ t('Net') }}</th></tr></thead>
-        <tbody>
-          {% for x in lines %}
-          <tr><td><b>{{ x.eye }}</b></td><td>{{ x.name }}<div class="sub code">{{ x.code }}</div></td><td class="tnum">{{ x.net }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="card">
-      <div class="card__header"><h2 class="card__title">{{ t('Reproducibility') }}</h2></div>
-      <div class="meta-grid">
-        <div><div class="eyebrow">{{ t('Catalog version') }}</div><div class="code">{{ q.catalog_version }}</div></div>
-        <div><div class="eyebrow">{{ t('Quote date') }}</div><div class="tnum">{{ q.date }}</div></div>
-        <div><div class="eyebrow">{{ t('VAT rate') }}</div><div class="tnum">{{ q.vat_rate }}</div></div>
+    <div>
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">{{ t('Quote lines (net)') }}</h2></div>
+        <table class="table">
+          <thead><tr><th>{{ t('Type') }}</th><th>{{ t('Item') }}</th>
+            <th class="tnum">{{ t('Qty') }}</th><th class="tnum">{{ t('Unit net') }}</th><th class="tnum">{{ t('Net') }}</th></tr></thead>
+          <tbody>
+            {% for x in lines %}
+            <tr>
+              <td>{{ ui.pill(t(x.type), 'info' if x.type == 'lens' else ('warning' if x.type == 'discount' else 'muted')) }}</td>
+              <td>{{ x.name }}{% if x.auto %} {{ ui.pill(t('auto-added'), 'muted') }}{% endif %}
+                {% if x.sku %}<div class="sub code">{{ x.sku }}</div>{% endif %}</td>
+              <td class="tnum">{{ x.qty }}</td>
+              <td class="tnum">{{ x.unit }}</td>
+              <td class="tnum">{{ x.net }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      <p class="hint">{{ t('Re-pricing this configuration against the same catalog version yields the identical quote.') }}</p>
-      <div class="toolbar"><a class="btn btn--ghost" href="{{ url_for('finder') }}">{{ t('Back to lens finder') }}</a></div>
+
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Frame') }}</h2>
+            <p class="card__subtitle">{{ t('Search the Unas frame catalog and add one to the quote') }}</p>
+          </div>
+        </div>
+        {% if frame %}
+          <p>{{ frame.name }} · <span class="code">{{ frame.sku }}</span></p>
+          <div class="toolbar"><a class="btn btn--ghost btn--sm" href="{{ q.remove_frame_url }}">{{ t('Remove frame') }}</a></div>
+        {% endif %}
+        <form method="get" action="{{ url_for('quote') }}">
+          {% for k, v in base_params.items() if v and k != 'opt' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+          {% for o in base_params.opt %}<input type="hidden" name="opt" value="{{ o }}">{% endfor %}
+          <div class="toolbar">
+            <input class="input" name="qf" value="{{ frame_query }}" placeholder="{{ t('Frame name or SKU…') }}" aria-label="{{ t('Frame name or SKU…') }}">
+            <button class="btn btn--soft" type="submit">{{ t('Search frames') }}</button>
+          </div>
+        </form>
+        {% if frame_hits %}
+        <table class="table">
+          <tbody>
+          {% for h in frame_hits %}
+            <tr><td>{{ h.name }}<div class="sub code">{{ h.sku }}</div></td>
+                <td class="tnum">{{ h.net }}</td>
+                <td><a class="btn btn--soft btn--sm" href="{{ h.add_url }}">{{ t('Add') }}</a></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% elif frame_query %}
+        <p class="hint">{{ t('No frame matches that search.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Discount') }}</h2>
+            <p class="card__subtitle">{{ t('Curated configs only — free-form discounts do not exist') }}</p>
+          </div>
+        </div>
+        {% if discount_error %}<p class="hint status--danger">{{ discount_error }}</p>{% endif %}
+        <form method="get" action="{{ url_for('quote') }}">
+          {% for k, v in base_params.items() if v and k not in ('opt', 'discount') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+          {% for o in base_params.opt %}<input type="hidden" name="opt" value="{{ o }}">{% endfor %}
+          {% for c in discount_configs %}
+          <label class="checkbox">
+            <input type="radio" name="discount" value="{{ c.config_id }}" {{ 'checked' if c.config_id == discount_id }}>
+            {{ c.name }}{% if c.requires_approval %} {{ ui.pill(t('approval required'), 'warning') }}{% endif %}
+          </label>
+          {% endfor %}
+          <label class="checkbox">
+            <input type="radio" name="discount" value="" {{ 'checked' if not discount_id }}>
+            {{ t('No discount') }}
+          </label>
+          <div class="toolbar"><button class="btn btn--soft" type="submit">{{ t('Apply') }}</button></div>
+        </form>
+        {% if applied_config and applied_config.requires_approval %}
+        <p class="hint">{{ t('Approved by {name} — logged to the audit trail on save.', name='Sabie Valner') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">{{ t('Reproducibility') }}</h2></div>
+        <div class="meta-grid">
+          <div><div class="eyebrow">{{ t('Catalog version') }}</div><div class="code">{{ q.catalog_version }}</div></div>
+          <div><div class="eyebrow">{{ t('Quote date') }}</div><div class="tnum">{{ q.date }}</div></div>
+          <div><div class="eyebrow">{{ t('VAT rate') }}</div><div class="tnum">{{ q.vat_rate }}</div></div>
+        </div>
+        <p class="hint">{{ t('Re-pricing this configuration against the same catalog version yields the identical quote.') }}</p>
+        <div class="toolbar"><a class="btn btn--ghost" href="{{ url_for('finder') }}">{{ t('Back to lens finder') }}</a></div>
+      </div>
     </div>
   </div>
 {% endif %}

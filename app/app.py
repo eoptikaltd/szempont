@@ -26,11 +26,27 @@ from pricing.models import LensDesign, CoatingTier, QuoteRequest, SearchQuery  #
 from pricing.pair import EyeRx, find_pair_options                # noqa: E402
 from pricing.search import search                                # noqa: E402
 from app.catalog import load_snapshot                            # noqa: E402
+from app.discounts import get_discount_config, load_discount_configs  # noqa: E402
+from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
+                            apply_discount, build_quote_record, invoice_lines,
+                            totals)
+from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
 
 app = Flask(__name__)
 APP_NAME = "Szempont"
 TOOL_ID = "szempont"
 HERE = os.path.dirname(__file__)
+
+# Auth is M5 (W3); until then the operator on the profile chip is the actor.
+ACTOR = "sabie.valner"
+# D2: munkadíj auto-added to every basket, optician-editable/removable.
+# Amount is the demo config; the curated service price list lands with M2C.
+MUNKADIJ = ServiceLine("Szemüvegkészítés munkadíj", Decimal("4500"))
+
+if os.environ.get("SZEMPONT_FRAMES") == "unas":  # pragma: no cover
+    FRAMES = UnasFrameSource(api_key=os.environ["UNAS_API_KEY"])
+else:
+    FRAMES = DemoFrameSource()
 
 with open(os.path.join(HERE, "nav.json"), encoding="utf-8") as fh:
     NAV = json.load(fh)
@@ -110,7 +126,12 @@ def finder():
                add=_dec("od_add", "0"))
     os_rx = EyeRx(sph=_dec("os_sph", "-2.00"), cyl=_dec("os_cyl", "0"),
                   add=_dec("os_add", "0"))
-    options = frozenset(request.args.getlist("opt"))
+    # opt = independent checkboxes; cg_* = one radio param per D5 choice group
+    # (radios must not share a name across groups, so they merge here).
+    options = frozenset(
+        set(request.args.getlist("opt"))
+        | {v for k, v in request.args.items()
+           if k.startswith("cg_") and v})
 
     pairs = find_pair_options(snap, od, os_rx, quote_date=today,
                               option_codes=options)
@@ -124,10 +145,27 @@ def finder():
         "photo": p.right.photochromic,
         "sku_r": p.right.sku,
         "sku_l": p.left.sku,
+        "dormant_r": p.right_dormant,       # ruling 10: muted pill
+        "dormant_l": p.left_dormant,
         "gross": huf(p.pair_retail_gross),
         "quote_url": url_for("quote", sku_r=p.right.sku, sku_l=p.left.sku,
                              opt=sorted(options)),
     } for p in pairs]
+
+    # D5: mandatory-choice surcharges render as one-of chip groups; the rest
+    # stay independent checkboxes.
+    plain_surcharges = sorted((s for s in snap.surcharges.values()
+                               if not s.choice_group), key=lambda s: s.name)
+    grouped: dict[str, list] = {}
+    for s in sorted(snap.surcharges.values(), key=lambda s: s.name):
+        if s.choice_group:
+            grouped.setdefault(s.choice_group, []).append(s)
+    choice_groups = [{
+        "key": f"cg_{i}",
+        "name": gname,
+        "members": members,
+        "selected": next((s.code for s in members if s.code in options), ""),
+    } for i, (gname, members) in enumerate(sorted(grouped.items()))]
 
     kpis = {
         "candidates": len(rows),
@@ -137,14 +175,16 @@ def finder():
     }
     return render_template(
         "finder.html", page_title="Lens finder", rows=rows, kpis=kpis,
-        f=request.args, surcharges=sorted(snap.surcharges.values(),
-                                          key=lambda s: s.name),
-        options=options,
+        f=request.args, surcharges=plain_surcharges,
+        choice_groups=choice_groups, options=options,
     )
 
 
 @app.route("/quote")
 def quote():
+    """Pair quote assembled through the persistence record (W2 item 2):
+    lens pair + optional Unas frame + auto munkadíj + curated discount.
+    Stateless preview — saving lands with the person attach (M3)."""
     snap = load_snapshot()
     options = frozenset(request.args.getlist("opt"))
     today = dt.date.today().isoformat()
@@ -160,23 +200,74 @@ def quote():
                                q=None, r=None, l=None, lines=[]), 404
 
     lens_r, lens_l = snap.lenses[sku_r], snap.lenses[sku_l]
-    lines = ([{"eye": "OD", "code": x.code, "name": x.name,
-               "net": huf(x.retail_net)} for x in qr.lines]
-             + [{"eye": "OS", "code": x.code, "name": x.name,
-                 "net": huf(x.retail_net)} for x in ql.lines])
-    total_net = qr.total_retail_net + ql.total_retail_net
-    total_gross = qr.total_retail_gross + ql.total_retail_gross
+
+    frame_sku = request.args.get("frame", "")
+    frame = FRAMES.get(frame_sku) if frame_sku else None
+
+    record = build_quote_record(
+        quote_id="preview", quote_date=today, created_by=ACTOR,
+        created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+        engine_quotes=[("OD", qr), ("OS", ql)],
+        frame=(frame.sku, frame.name, frame.retail_net) if frame else None,
+        auto_services=[MUNKADIJ],
+    )
+
+    discount_id = request.args.get("discount", "")
+    discount_error = None
+    applied_config = None
+    if discount_id:
+        cfg = get_discount_config(discount_id)
+        if cfg is None:
+            discount_error = f"ismeretlen kedvezmény: {discount_id}"
+        else:
+            try:
+                # Approval UI is M5 (permissions); the operator on the
+                # profile chip approves for now, audited on save.
+                record = apply_discount(
+                    record, cfg,
+                    approved_by=ACTOR if cfg.requires_approval else None)
+                applied_config = cfg
+            except QuoteError as e:
+                discount_error = str(e)
+
+    t_ = totals(record)
+    base_params = {"sku_r": sku_r, "sku_l": sku_l, "opt": sorted(options),
+                   "frame": frame_sku or None, "discount": discount_id or None}
+
+    frame_query = request.args.get("qf", "").strip()
+    frame_hits = [{
+        "sku": f.sku, "name": f.name, "net": huf(f.retail_net),
+        "add_url": url_for("quote", **{**base_params, "frame": f.sku}),
+    } for f in (FRAMES.search(frame_query) if frame_query else [])]
+
+    lines = [{
+        "type": x.line_type, "name": x.name, "sku": x.sku or "",
+        "qty": x.qty, "unit": huf(x.unit_retail_net), "net": huf(x.net),
+        "auto": x.auto_added,
+    } for x in invoice_lines(record)]
+
     view = {
-        "total_net": huf(total_net),
-        "vat": huf(total_gross - total_net),
-        "gross": huf(total_gross),
-        "vat_rate": f"{qr.vat_rate * 100:.0f}%",
+        "basket_net": huf(t_.basket_net),
+        "discount_net": huf(t_.discount_net),
+        "total_net": huf(t_.total_retail_net),
+        "vat": huf(t_.total_vat),
+        "gross": huf(t_.total_retail_gross),
+        "vat_rate": f"{record.vat_rate * 100:.0f}%",
         "override": qr.override_applied or ql.override_applied,
-        "catalog_version": qr.catalog_version,
-        "date": qr.quote_date,
+        "catalog_version": record.catalog_version,
+        "date": record.quote_date,
+        "remove_frame_url": url_for("quote", **{**base_params, "frame": None}),
+        "clear_discount_url": url_for("quote",
+                                      **{**base_params, "discount": None}),
     }
-    return render_template("quote.html", page_title="Quote", error=None,
-                           q=view, r=lens_r, l=lens_l, lines=lines)
+    return render_template(
+        "quote.html", page_title="Quote", error=None,
+        q=view, r=lens_r, l=lens_l, lines=lines,
+        frame=frame, frame_query=frame_query, frame_hits=frame_hits,
+        discount_configs=load_discount_configs(), discount_id=discount_id,
+        applied_config=applied_config, discount_error=discount_error,
+        base_params=base_params,
+    )
 
 
 
@@ -196,6 +287,9 @@ def konzultacio():
     frame_ed = _dec("frame_ed", "50")
 
     pairs = find_pair_options(snap, od, os_rx, quote_date=today)
+    # Ruling 10: dormant SKUs stay sellable (finder, muted pill) but are not
+    # proposed on the customer-facing consultation tiers.
+    pairs = [p for p in pairs if not (p.right_dormant or p.left_dormant)]
     # price-anchored tiers (no margin data in Szempont): cheapest / middle / top;
     # rank_score can override the middle pick when published.
     by_price = sorted(pairs, key=lambda p: p.pair_retail_gross)
