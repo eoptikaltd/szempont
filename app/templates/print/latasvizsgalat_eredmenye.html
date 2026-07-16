@@ -81,7 +81,7 @@
   <div class="lh">
     <div>
       <div class="brand">eOptika</div>
-      <div class="store">eOptika márkabolt, Teréz körút 50.</div><!-- {{ store.name }} -->
+      <div class="store">eOptika márkabolt, Teréz körút 50.</div>
     </div>
     <div class="contact">
       1066 Budapest, Teréz körút 50.<br>
@@ -92,18 +92,18 @@
 
   <h1>Látásvizsgálat eredménye</h1>
 
-  <div class="meta"><!-- {{ patient / exam }} -->
+  <div class="meta">
     <div>
-      <div><b>Páciens neve:</b> Minta Anna</div>
-      <div><b>Cím:</b> 1066 Budapest, Példa utca 12.</div>
-      <div><b>Születési dátum:</b> 1985. 03. 14.</div>
-      <div><b>Mobil:</b> +36 30 123 4567</div>
-      <div><b>Email:</b> minta.anna@example.com</div>
+      <div><b>Páciens neve:</b> {{ d.name }}</div>
+      <div><b>Cím:</b> {{ d.address }}</div>
+      <div><b>Születési dátum:</b> {{ d.birth }}</div>
+      <div><b>Mobil:</b> {{ d.phone }}</div>
+      <div><b>Email:</b> {{ d.email }}</div>
     </div>
     <div>
-      <div><b>Páciens azonosító:</b> PA-1225063</div>
-      <div><b>Vizsgálat dátuma:</b> 2026. 07. 15.</div>
-      <div><b>Javasolt kontroll:</b> 2026. 10. 15.</div>
+      <div><b>Páciens azonosító:</b> {{ d.pid }}</div>
+      <div><b>Vizsgálat dátuma:</b> {{ d.exam_date }}</div>
+      <div><b>Javasolt kontroll:</b> {{ d.control_date }}</div>
     </div>
   </div>
 
@@ -114,8 +114,8 @@
         <table class="grid">
           <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th></tr></thead>
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>−6.75</td><td>+1.25</td><td>83</td></tr>
-            <tr><td class="eye">B:</td><td>−6.25</td><td>+1.25</td><td>96</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.ar_j_sph }}</td><td>{{ d.ar_j_cyl }}</td><td>{{ d.ar_j_ax }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.ar_b_sph }}</td><td>{{ d.ar_b_cyl }}</td><td>{{ d.ar_b_ax }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -124,8 +124,8 @@
         <table class="grid">
           <thead><tr><th></th><th>BC</th></tr></thead>
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>8.26</td></tr>
-            <tr><td class="eye">B:</td><td>8.17</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.ker_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.ker_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -133,8 +133,8 @@
         <h2>Pupillatávolság</h2>
         <table class="grid">
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>29.5</td></tr>
-            <tr><td class="eye">B:</td><td>29.5</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.pd_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.pd_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -148,8 +148,8 @@
         <table class="grid">
           <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th></tr></thead>
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>−6.75</td><td>+1.25</td><td>85</td></tr>
-            <tr><td class="eye">B:</td><td>−6.75</td><td>+1.25</td><td>95</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.mono_j_sph }}</td><td>{{ d.mono_j_cyl }}</td><td>{{ d.mono_j_ax }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.mono_b_sph }}</td><td>{{ d.mono_b_cyl }}</td><td>{{ d.mono_b_ax }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -157,8 +157,8 @@
         <h2>Vízus</h2>
         <table class="grid">
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>0.9</td></tr>
-            <tr><td class="eye">B:</td><td>0.9</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.viz_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.viz_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -166,8 +166,8 @@
         <h2>Pupillatávolság</h2>
         <table class="grid">
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>29.5</td></tr>
-            <tr><td class="eye">B:</td><td>29.5</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.pd_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.pd_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -181,23 +181,23 @@
         <table class="grid">
           <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th></tr></thead>
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>−6.75</td><td>+1.25</td><td>85</td></tr>
-            <tr><td class="eye">B:</td><td>−6.75</td><td>+1.25</td><td>95</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.bino_j_sph }}</td><td>{{ d.bino_j_cyl }}</td><td>{{ d.bino_j_ax }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.bino_b_sph }}</td><td>{{ d.bino_b_cyl }}</td><td>{{ d.bino_b_ax }}</td></tr>
           </tbody>
         </table>
       </div>
       <div>
         <h2>Binokuláris vízus</h2>
         <table class="grid">
-          <tbody class="num"><tr><td class="eye"></td><td>1.0</td></tr></tbody>
+          <tbody class="num"><tr><td class="eye"></td><td>{{ d.viz_bin }}</td></tr></tbody>
         </table>
       </div>
       <div>
         <h2>Pupillatávolság</h2>
         <table class="grid">
           <tbody class="num">
-            <tr><td class="eye">J:</td><td>29.5</td></tr>
-            <tr><td class="eye">B:</td><td>29.5</td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.pd_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.pd_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -211,8 +211,8 @@
         <table class="grid">
           <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th></tr></thead>
           <tbody class="num">
-            <tr><td class="eye">J:</td><td></td><td></td><td></td></tr>
-            <tr><td class="eye">B:</td><td></td><td></td><td></td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.near_j_sph }}</td><td>{{ d.near_j_cyl }}</td><td>{{ d.near_j_ax }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.near_b_sph }}</td><td>{{ d.near_b_cyl }}</td><td>{{ d.near_b_ax }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -220,8 +220,8 @@
         <h2>Addíció közelre</h2>
         <table class="grid">
           <tbody class="num">
-            <tr><td class="eye">J:</td><td></td></tr>
-            <tr><td class="eye">B:</td><td></td></tr>
+            <tr><td class="eye">J:</td><td>{{ d.add_j }}</td></tr>
+            <tr><td class="eye">B:</td><td>{{ d.add_b }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -240,7 +240,7 @@
 
   <footer>
     A vizsgálatot az eOptika Teréz körút 50. szaküzletben végezték a Szempont rendszerrel. ·
-    Nyomtatás dátuma: 2026. július 15.
+    Nyomtatás dátuma: {{ printed_display }}
   </footer>
 </div>
 
@@ -260,12 +260,12 @@
 
   <div class="meta">
     <div>
-      <div><b>Páciens neve:</b> Minta Anna</div>
-      <div><b>Cím:</b> 1066 Budapest, Példa utca 12.</div>
-      <div><b>Születési dátum:</b> 1985. 03. 14.</div>
+      <div><b>Páciens neve:</b> {{ d.name }}</div>
+      <div><b>Cím:</b> {{ d.address }}</div>
+      <div><b>Születési dátum:</b> {{ d.birth }}</div>
     </div>
     <div>
-      <div><b>Vizsgálat dátuma:</b> 2026. 07. 15.</div>
+      <div><b>Vizsgálat dátuma:</b> {{ d.exam_date }}</div>
     </div>
   </div>
 
@@ -275,8 +275,8 @@
       <colgroup><col class="c-eye"><col class="c-sph"><col class="c-cyl"><col class="c-axis"><col></colgroup>
       <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th><th>PD</th></tr></thead>
       <tbody class="num">
-        <tr><td class="eye">J:</td><td>−6.75</td><td>+1.25</td><td>85</td><td>29.5</td></tr>
-        <tr><td class="eye">B:</td><td>−6.75</td><td>+1.25</td><td>95</td><td>29.5</td></tr>
+        <tr><td class="eye">J:</td><td>{{ d.tavoli_j_sph }}</td><td>{{ d.tavoli_j_cyl }}</td><td>{{ d.tavoli_j_ax }}</td><td>{{ d.pd_j }}</td></tr>
+        <tr><td class="eye">B:</td><td>{{ d.tavoli_b_sph }}</td><td>{{ d.tavoli_b_cyl }}</td><td>{{ d.tavoli_b_ax }}</td><td>{{ d.pd_b }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -287,8 +287,8 @@
       <colgroup><col class="c-eye"><col class="c-sph"><col class="c-cyl"><col class="c-axis"><col></colgroup>
       <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th><th>PD</th></tr></thead>
       <tbody class="num">
-        <tr><td class="eye">J:</td><td></td><td></td><td></td><td></td></tr>
-        <tr><td class="eye">B:</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="eye">J:</td><td>{{ d.olvaso_j_sph }}</td><td>{{ d.olvaso_j_cyl }}</td><td>{{ d.olvaso_j_ax }}</td><td>{{ d.olvaso_j_pd }}</td></tr>
+        <tr><td class="eye">B:</td><td>{{ d.olvaso_b_sph }}</td><td>{{ d.olvaso_b_cyl }}</td><td>{{ d.olvaso_b_ax }}</td><td>{{ d.olvaso_b_pd }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -299,8 +299,8 @@
       <colgroup><col class="c-eye"><col class="c-sph"><col class="c-cyl"><col class="c-axis"><col><col></colgroup>
       <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th><th>Addíció</th><th>PD</th></tr></thead>
       <tbody class="num">
-        <tr><td class="eye">J:</td><td></td><td></td><td></td><td></td><td></td></tr>
-        <tr><td class="eye">B:</td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="eye">J:</td><td>{{ d.multi_j_sph }}</td><td>{{ d.multi_j_cyl }}</td><td>{{ d.multi_j_ax }}</td><td>{{ d.multi_j_add }}</td><td>{{ d.multi_j_pd }}</td></tr>
+        <tr><td class="eye">B:</td><td>{{ d.multi_b_sph }}</td><td>{{ d.multi_b_cyl }}</td><td>{{ d.multi_b_ax }}</td><td>{{ d.multi_b_add }}</td><td>{{ d.multi_b_pd }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -311,8 +311,8 @@
       <colgroup><col class="c-eye"><col class="c-sph"><col class="c-cyl"><col class="c-axis"><col></colgroup>
       <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th><th>PD</th></tr></thead>
       <tbody class="num">
-        <tr><td class="eye">J:</td><td></td><td></td><td></td><td></td></tr>
-        <tr><td class="eye">B:</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="eye">J:</td><td>{{ d.spec_j_sph }}</td><td>{{ d.spec_j_cyl }}</td><td>{{ d.spec_j_ax }}</td><td>{{ d.spec_j_pd }}</td></tr>
+        <tr><td class="eye">B:</td><td>{{ d.spec_b_sph }}</td><td>{{ d.spec_b_cyl }}</td><td>{{ d.spec_b_ax }}</td><td>{{ d.spec_b_pd }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -323,22 +323,15 @@
       <colgroup><col class="c-eye"><col class="c-sph"><col class="c-cyl"><col class="c-axis"><col><col></colgroup>
       <thead><tr><th></th><th>Sph</th><th>Cyl</th><th>Axis</th><th>Lencse típus</th><th>BC</th></tr></thead>
       <tbody class="num">
-        <tr><td class="eye">J:</td><td>−5.00</td><td>−1.25</td><td>170</td><td>JJ OATP</td><td>8.60</td></tr>
-        <tr><td class="eye">B:</td><td>−5.00</td><td>−1.25</td><td>10</td><td>JJ OATP</td><td>8.60</td></tr>
+        <tr><td class="eye">J:</td><td>{{ d.kl_j_sph }}</td><td>{{ d.kl_j_cyl }}</td><td>{{ d.kl_j_ax }}</td><td>{{ d.kl_j_type }}</td><td>{{ d.kl_j_bc }}</td></tr>
+        <tr><td class="eye">B:</td><td>{{ d.kl_b_sph }}</td><td>{{ d.kl_b_cyl }}</td><td>{{ d.kl_b_ax }}</td><td>{{ d.kl_b_type }}</td><td>{{ d.kl_b_bc }}</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="anam">
-    <p><b>Diagnózis/Anamnézis:</b> Kl szeretne. Jelenlegi kl. nem cylinderes.</p>
-    <p>Mai eredmény:
-od: 2mou −5,50 −1,25cyl 175° V0,9
-os: 2mou −5,50 −1,25cyl 5° V0,9
-Vbin 0,9–1,0
-RI: Conj. nagyon száraz, enyhén erezett, műkönny napi 3–4× csöpögtetni!! OCUTEARS, SYSTANE BALANCE.
-Próbalencse rendelés: JJ OATP 8,6
-od: −5,00 −1,25cyl 170° · os: −5,00 −1,25cyl 10°
-Próbalencse próba után dobozzal rendeljen!!</p>
+    <p><b>Diagnózis/Anamnézis:</b> {{ d.anam_dx }}</p>
+    <p>{{ d.anam_notes }}</p>
   </div>
 
   <p class="guarantee">Szaküzleteinkben elvégzett látásvizsgálataink eredményéért felelősséget és garanciát vállalunk. A garancia időtartama a vizsgálat elvégzésétől számított 90 nap.</p>
@@ -349,11 +342,11 @@ Próbalencse próba után dobozzal rendeljen!!</p>
     <div>Aláírás</div>
   </div>
 
-  <div class="validity"><b>Recept érvényességi ideje:</b> 2026. 10. 15.</div>
+  <div class="validity"><b>Recept érvényességi ideje:</b> {{ d.validity_date }}</div>
 
   <footer>
     A vizsgálatot az eOptika Teréz körút 50. szaküzletben végezték a Szempont rendszerrel. ·
-    Nyomtatás dátuma: 2026. július 15.
+    Nyomtatás dátuma: {{ printed_display }}
   </footer>
 </div>
 

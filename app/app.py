@@ -25,7 +25,8 @@ from pricing.engine import PricingError, price_quote            # noqa: E402
 from pricing.models import LensDesign, CoatingTier, QuoteRequest, SearchQuery  # noqa: E402
 from pricing.pair import EyeRx, find_pair_options                # noqa: E402
 from pricing.search import search                                # noqa: E402
-from app.catalog import load_snapshot                            # noqa: E402
+from app.barcodes import code128_svg, ean13_svg                  # noqa: E402
+from app.catalog import load_snapshot, tint_swatches             # noqa: E402
 from app.discounts import get_discount_config, load_discount_configs  # noqa: E402
 from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
                             apply_discount, build_quote_record, invoice_lines,
@@ -433,11 +434,10 @@ def quote():
 
 @app.route("/konzultacio")
 def konzultacio():
-    """Consultation mode — customer-facing shared screen (M2C prototype).
-    Three tiers built from the pair finder (research: GrandVision 3-option
-    model, Essilor Companion / Zeiss VISUCONSULT guided flow), with an honest
-    geometry-based thickness comparison (becsult ertek)."""
-    from decimal import Decimal
+    """M2C Konzultáció — customer-facing shared screen, W2-light scope
+    (benchmark §4): three tiers from the live catalog path, honest thickness
+    bars, ALWAYS-VISIBLE basket panel, tint swatches from the Szín catalog
+    when the active snapshot carries tints. No questionnaire, no camera."""
     from pricing.thickness import compare_indices
 
     snap = load_snapshot()
@@ -445,21 +445,46 @@ def konzultacio():
     od = EyeRx(sph=_dec("od_sph", "-4.00"), cyl=_dec("od_cyl", "0"))
     os_rx = EyeRx(sph=_dec("os_sph", "-3.75"), cyl=_dec("os_cyl", "0"))
     frame_ed = _dec("frame_ed", "50")
+    tint = request.args.get("tint", "").strip()
+    frame_sku = request.args.get("frame", "").strip()
+    person = request.args.get("person", "").strip()
 
-    pairs = find_pair_options(snap, od, os_rx, quote_date=today)
+    swatches = tint_swatches(snap)          # {} on tint-less live catalogs
+    tint_code = next(iter(swatches), None)
+    options = (frozenset({tint_code})
+               if tint and tint_code else frozenset())
+
+    base = {"od_sph": request.args.get("od_sph"),
+            "od_cyl": request.args.get("od_cyl"),
+            "os_sph": request.args.get("os_sph"),
+            "os_cyl": request.args.get("os_cyl"),
+            "frame_ed": request.args.get("frame_ed"),
+            "tier": request.args.get("tier"), "tint": tint or None,
+            "frame": frame_sku or None, "person": person or None}
+
+    def kurl(**over):
+        merged = {**base, **over}
+        return url_for("konzultacio",
+                       **{k: v for k, v in merged.items() if v})
+
+    pairs = find_pair_options(snap, od, os_rx, quote_date=today,
+                              option_codes=options)
     # Ruling 10: dormant SKUs stay sellable (finder, muted pill) but are not
     # proposed on the customer-facing consultation tiers.
     pairs = [p for p in pairs if not (p.right_dormant or p.left_dormant)]
     # price-anchored tiers (no margin data in Szempont): cheapest / middle / top;
     # rank_score can override the middle pick when published.
     by_price = sorted(pairs, key=lambda p: p.pair_retail_gross)
-    tiers = []
+    tiers, picks = [], {}
     if by_price:
         mid = max(pairs, key=lambda p: p.rank_score) if any(
             p.rank_score for p in pairs) else by_price[len(by_price) // 2]
         picks = {"Alap": by_price[0],
                  "Ajánlott": mid,
                  "Prémium": by_price[-1]}
+        selected_label = request.args.get("tier") or "Ajánlott"
+        if selected_label not in picks:
+            selected_label = "Ajánlott"
         seen = set()
         for label, p in picks.items():
             if p.family_key in seen and len(by_price) > len(seen):
@@ -472,6 +497,8 @@ def konzultacio():
                 "supplier": p.supplier,
                 "gross": huf(p.pair_retail_gross),
                 "recommended": label == "Ajánlott",
+                "selected": label == selected_label,
+                "select_url": kurl(tier=label),
             })
 
     worst_eye = min(od.sph + min(od.cyl, Decimal(0)),
@@ -486,9 +513,224 @@ def konzultacio():
     for t in thick:
         t["bar_pct"] = int(Decimal(t["edge"]) / max_edge * 100)
 
+    # Always-visible basket: the selected tier priced through the SAME record
+    # path as the quote page (frame + lens pair + options + munkadíj).
+    basket = None
+    if picks:
+        chosen = picks.get(request.args.get("tier") or "Ajánlott",
+                           picks["Ajánlott"])
+        try:
+            *_, record = _preview_record(chosen.right.sku, chosen.left.sku,
+                                         options, frame_sku, person, today)
+            t_ = totals(record)
+            one = 1 + record.vat_rate
+            basket = {
+                "lines": [{"name": l.name,
+                           "gross": huf((l.net * one).quantize(Decimal("1")))}
+                          for l in invoice_lines(record)],
+                "total": huf(t_.total_retail_gross),
+                "tint": tint or None,
+                "quote_url": url_for(
+                    "quote", sku_r=chosen.right.sku, sku_l=chosen.left.sku,
+                    opt=sorted(options), frame=frame_sku or None,
+                    person=person or None),
+            }
+        except PricingError:
+            basket = None
+
+    frame = FRAMES.get(frame_sku) if frame_sku else None
+    frame_query = request.args.get("qf", "").strip()
+    frame_hits = [{"sku": h.sku, "name": h.name, "net": huf(h.retail_net),
+                   "add_url": kurl(frame=h.sku, qf=None)}
+                  for h in (FRAMES.search(frame_query) if frame_query else [])]
+
+    swatch_rows = []
+    for code, colors in swatches.items():
+        sc = snap.surcharges[code]
+        swatch_rows.append({
+            "name": sc.name,
+            "gross": huf((sc.retail_net * (1 + snap.vat_rate))
+                         .quantize(Decimal("1"))),
+            "colors": [{"name": n, "hex": h,
+                        "url": kurl(tint=None if tint == n else n),
+                        "active": tint == n} for n, h in colors],
+        })
+
     return render_template("konzultacio.html", page_title="Konzultáció",
                            tiers=tiers, thick=thick, f=request.args,
-                           frame_ed=frame_ed)
+                           frame_ed=frame_ed, basket=basket, frame=frame,
+                           frame_query=frame_query, frame_hits=frame_hits,
+                           swatch_rows=swatch_rows, kurl=kurl)
+
+
+# ------------------------------------------------------- print routes (item 4b)
+HU_WEEKDAYS = ("hétfő", "kedd", "szerda", "csütörtök", "péntek",
+               "szombat", "vasárnap")
+HU_MONTHS = ("január", "február", "március", "április", "május", "június",
+             "július", "augusztus", "szeptember", "október", "november",
+             "december")
+
+
+def _hu_date(d: dt.date) -> str:
+    return f"{d.year}. {d.month:02d}. {d.day:02d}."
+
+
+def _fmt_power(raw: str) -> str:
+    """'+0.75' / '-0,25' -> '+0,75' / '−0,25' (print sheet convention:
+    always-signed, comma decimals, U+2212 minus)."""
+    s = (raw or "").strip().replace(",", ".")
+    if not s:
+        return ""
+    try:
+        v = Decimal(s)
+    except Exception:
+        return raw
+    return f"{v:+.2f}".replace(".", ",").replace("-", "−")
+
+
+def _fmt_mm(raw: str) -> str:
+    s = (raw or "").strip().replace(",", ".")
+    if not s:
+        return ""
+    try:
+        return f"{Decimal(s):.1f}".replace(".", ",")
+    except Exception:
+        return raw
+
+
+def _person_print_fields(person: str) -> dict:
+    """name/id/phone/birth/email for print sheets, resolving Z1 via the join."""
+    pv = _person_view(person)
+    if not pv:
+        return {"name": "", "id": "", "phone": "", "birth": "", "email": ""}
+    card = DIRECTORY.lookup(pv["resolved"] or pv["id"])
+    walkin = WALKINS.get(pv["id"]) if pv["walkin"] else None
+    return {
+        "name": pv["name"], "id": pv["resolved"] or pv["id"],
+        "phone": (card.phone_e164 if card
+                  else (walkin.phone_raw if walkin else "")) or "",
+        "birth": (card.birth_date if card
+                  else (walkin.birth_date if walkin else "")) or "",
+        "email": (card.email if card
+                  else (walkin.email_raw if walkin else "")) or "",
+    }
+
+
+@app.route("/print/munkalap")
+def print_munkalap():
+    """Lab glazing sheet — design-frozen template, data wired in (item 4b).
+    Real Code-128 (order, lens SKUs) and EAN-13 (frame GTIN) inline SVGs
+    replace the CSS placeholder stripes. Centration fields left blank when
+    not passed — the sheet stays pencil-friendly by design."""
+    snap = load_snapshot()
+    a = request.args.get
+    sku_r = a("sku_r") or a("sku", "")
+    sku_l = a("sku_l") or sku_r
+    lens_r, lens_l = snap.lenses.get(sku_r), snap.lenses.get(sku_l)
+    if lens_r is None or lens_l is None:
+        return f"ismeretlen SKU: {sku_r if lens_r is None else sku_l}", 404
+
+    today = dt.date.today()
+    order_no = a("order", "").strip()
+    job_id = a("job", "").strip() or f"ML-{today:%y%m%d}-0001"
+    try:
+        due = dt.date.fromisoformat(a("due", ""))
+    except ValueError:
+        due = today + dt.timedelta(days=3)
+    frame = FRAMES.get(a("frame", "")) if a("frame") else None
+    p = _person_print_fields(a("person", "").strip())
+
+    def lens_row(eye, lens, pre):
+        return {
+            "eye": eye, "name": lens.name, "sku": lens.sku,
+            "barcode": code128_svg(lens.sku, module_width=0.12,
+                                   module_height=3.5, font_size=5),
+            "sph": _fmt_power(a(f"{pre}_sph", "")),
+            "cyl": _fmt_power(a(f"{pre}_cyl", "")),
+            "axis": (a(f"{pre}_ax", "") + "°") if a(f"{pre}_ax") else "",
+            "pd": _fmt_mm(a(f"{pre}_pd", "")),
+            "height": _fmt_mm(a(f"{pre}_h", "")),
+        }
+
+    ml = {
+        "job_id": job_id,
+        "order_no": order_no or "—",
+        "order_barcode": code128_svg(order_no or job_id, module_width=0.18,
+                                     module_height=4.5, write_text=False),
+        "recorded_by": operator_display(current_operator()),
+        "today_display": _hu_date(today),
+        "due_display": f"{due.month:02d}. {due.day:02d}.",
+        "due_weekday": HU_WEEKDAYS[due.weekday()],
+        "prio": "SÜRGŐS" if a("prio") == "surgos" else "NORMÁL",
+        "customer_name": p["name"] or "—",
+        "customer_id": p["id"] or "—",
+        "customer_phone": p["phone"] or "—",
+        "frame_name": frame.name if frame else "Hozott keret / nincs megadva",
+        "frame_code": frame.sku if frame else "—",
+        "frame_barcode": (ean13_svg(frame.ean, module_height=3.5, font_size=5)
+                          if frame and frame.ean else
+                          (code128_svg(frame.sku, module_width=0.12,
+                                       module_height=3.5, font_size=5)
+                           if frame else "")),
+        "od": lens_row("J", lens_r, "od"),
+        "os": lens_row("B", lens_l, "os"),
+        "work_code": a("work_code", "PF-00005"),
+        "work_note": a("work_note", "(teli keretbe)"),
+        "printed_at": (_hu_date(today)
+                       + f" {dt.datetime.now():%H:%M}"),
+    }
+    return render_template("print/munkalap.html", ml=ml)
+
+
+# Layout-check sample for the exam sheet (the frozen mockup's own data).
+DEMO_EXAM = {
+    "name": "Minta Anna", "address": "1066 Budapest, Példa utca 12.",
+    "birth": "1985. 03. 14.", "phone": "+36 30 123 4567",
+    "email": "minta.anna@example.com", "pid": "PA-1225063",
+    "exam_date": "2026. 07. 15.", "control_date": "2026. 10. 15.",
+    "validity_date": "2026. 10. 15.",
+    "ar_j_sph": "−6.75", "ar_j_cyl": "+1.25", "ar_j_ax": "83",
+    "ar_b_sph": "−6.25", "ar_b_cyl": "+1.25", "ar_b_ax": "96",
+    "ker_j": "8.26", "ker_b": "8.17", "pd_j": "29.5", "pd_b": "29.5",
+    "mono_j_sph": "−6.75", "mono_j_cyl": "+1.25", "mono_j_ax": "85",
+    "mono_b_sph": "−6.75", "mono_b_cyl": "+1.25", "mono_b_ax": "95",
+    "viz_j": "0.9", "viz_b": "0.9", "viz_bin": "1.0",
+    "bino_j_sph": "−6.75", "bino_j_cyl": "+1.25", "bino_j_ax": "85",
+    "bino_b_sph": "−6.75", "bino_b_cyl": "+1.25", "bino_b_ax": "95",
+    "tavoli_j_sph": "−6.75", "tavoli_j_cyl": "+1.25", "tavoli_j_ax": "85",
+    "tavoli_b_sph": "−6.75", "tavoli_b_cyl": "+1.25", "tavoli_b_ax": "95",
+    "kl_j_sph": "−5.00", "kl_j_cyl": "−1.25", "kl_j_ax": "170",
+    "kl_j_type": "JJ OATP", "kl_j_bc": "8.60",
+    "kl_b_sph": "−5.00", "kl_b_cyl": "−1.25", "kl_b_ax": "10",
+    "kl_b_type": "JJ OATP", "kl_b_bc": "8.60",
+    "anam_dx": "Kl szeretne. Jelenlegi kl. nem cylinderes.",
+    "anam_notes": "Mai eredmény:\nod: 2mou −5,50 −1,25cyl 175° V0,9\n"
+                  "os: 2mou −5,50 −1,25cyl 5° V0,9\nVbin 0,9–1,0",
+}
+
+
+@app.route("/print/latasvizsgalat")
+def print_latasvizsgalat():
+    """Exam-result + suggested-correction sheet — design-frozen template.
+    PURE PASS-THROUGH: values exist only in this request; Szempont stores no
+    Rx/health data (hard rule 5 — IRIS owns it, M6 reads via contract).
+    ?demo=1 renders the mockup's sample for layout verification. Person
+    fields prefill from the directory/walk-in when ?person= is given."""
+    d = {k: v for k, v in request.args.items() if k not in ("demo", "person")}
+    if request.args.get("demo") == "1":
+        d = {**DEMO_EXAM, **d}
+    person = request.args.get("person", "").strip()
+    if person:
+        p = _person_print_fields(person)
+        d.setdefault("name", p["name"])
+        d.setdefault("pid", p["id"])
+        d.setdefault("phone", p["phone"])
+        d.setdefault("email", p["email"])
+        d.setdefault("birth", p["birth"])
+    today = dt.date.today()
+    printed = f"{today.year}. {HU_MONTHS[today.month - 1]} {today.day}."
+    return render_template("print/latasvizsgalat_eredmenye.html",
+                           d=d, printed_display=printed)
 
 
 if __name__ == "__main__":

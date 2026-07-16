@@ -27,10 +27,12 @@ UNAS_API_URL = "https://api.unas.eu/shop"
 @dataclass(frozen=True)
 class Frame:
     """One sellable frame as the quote's frame line consumes it (net HUF,
-    consistent with the lens catalog money convention A1)."""
+    consistent with the lens catalog money convention A1). ean: 12/13-digit
+    GTIN when the shop carries one — the munkalap prints it as EAN-13."""
     sku: str
     name: str
     retail_net: Decimal
+    ean: str | None = None
 
 
 class FrameSource(Protocol):
@@ -65,9 +67,12 @@ class DemoFrameSource:
 
 
 DEMO_FRAMES = (
-    Frame("FRM-RB-5228", "Ray-Ban RB5228 fekete keret", Decimal("39000")),
-    Frame("FRM-RB-7047", "Ray-Ban RB7047 matt kék keret", Decimal("34500")),
-    Frame("FRM-OAK-8156", "Oakley OX8156 Holbrook RX keret", Decimal("42900")),
+    Frame("FRM-RB-5228", "Ray-Ban RB5228 fekete keret", Decimal("39000"),
+          ean="599811241152"),
+    Frame("FRM-RB-7047", "Ray-Ban RB7047 matt kék keret", Decimal("34500"),
+          ean="599811270474"),
+    Frame("FRM-OAK-8156", "Oakley OX8156 Holbrook RX keret", Decimal("42900"),
+          ean="599811281563"),
     Frame("FRM-EO-CLASS-01", "eOptika Classic 01 acél keret", Decimal("14900")),
     Frame("FRM-EO-KONNYU-02", "eOptika Könnyű 02 titán keret", Decimal("19900")),
 )
@@ -100,7 +105,8 @@ def parse_products_xml(xml_text: str) -> list[Frame]:
                 break
         if not sku or not name or net is None:
             continue
-        out.append(Frame(sku=sku, name=name, retail_net=Decimal(net)))
+        out.append(Frame(sku=sku, name=name, retail_net=Decimal(net),
+                         ean=(prod.findtext("Ean") or None)))
     return out
 
 

@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% import '_macros.html' as ui %}
-{# Konzultációs mód — customer-facing shared screen. Larger type, three tiers,
-   honest thickness comparison. Contract classes only; density: comfortable. #}
+{# Konzultációs mód — customer-facing shared screen, M2C W2-light (item 4a):
+   three tiers, honest thickness bars, always-visible basket, tint swatches
+   from the Szín catalog when present. Larger type, calmer density. #}
 {% block content %}
 
   <div class="card">
@@ -11,6 +12,7 @@
       </div>
     </div>
     <form method="get" action="{{ url_for('konzultacio') }}">
+      {% for k in ('tier','tint','frame','person') %}{% if f.get(k) %}<input type="hidden" name="{{ k }}" value="{{ f.get(k) }}">{% endif %}{% endfor %}
       <div class="cols-3">
         <div class="field"><label class="label">OD sph / cyl</label>
           <input class="input tnum" name="od_sph" value="{{ f.get('od_sph','-4.00') }}">
@@ -25,43 +27,129 @@
     </form>
   </div>
 
-  <div class="cols-3">
-    {% for tier in tiers %}
-    <div class="card{% if tier.recommended %} card--accent{% endif %}">
-      <div class="card__header">
-        <div>
-          <div class="eyebrow">{{ tier.label }}{% if tier.recommended %} · {{ t('ajánljuk') }}{% endif %}</div>
-          <h2 class="card__title">{{ tier.family }}</h2>
-          <p class="card__subtitle">{{ tier.supplier }} · index {{ tier.index }}</p>
+  <div class="cols-main">
+    <div>
+      <div class="cols-3">
+        {% for tier in tiers %}
+        <div class="card{% if tier.recommended %} card--accent{% endif %}">
+          <div class="card__header">
+            <div>
+              <div class="eyebrow">{{ tier.label }}{% if tier.recommended %} · {{ t('ajánljuk') }}{% endif %}</div>
+              <h2 class="card__title">{{ tier.family }}</h2>
+              <p class="card__subtitle">{{ tier.supplier }} · index {{ tier.index }}</p>
+            </div>
+          </div>
+          <p class="kpi__value tnum">{{ tier.gross }}</p>
+          <p class="hint">{{ t('Pár, bruttó, munkadíj nélkül') }}</p>
+          <div class="toolbar">
+            {% if tier.selected %}{{ ui.pill(t('a kosárban'), 'success') }}
+            {% else %}<a class="btn btn--soft btn--sm" href="{{ tier.select_url }}">{{ t('Ezt nézzük meg') }}</a>{% endif %}
+          </div>
         </div>
+        {% endfor %}
       </div>
-      <p class="kpi__value tnum">{{ tier.gross }}</p>
-      <p class="hint">{{ t('Pár, bruttó, munkadíj nélkül') }}</p>
-    </div>
-    {% endfor %}
-  </div>
 
-  <div class="card">
-    <div class="card__header">
-      <div>
-        <h2 class="card__title">{{ t('Mennyire lesz vékony a lencse?') }}</h2>
-        <p class="card__subtitle">{{ t('Becsült szélvastagság az Ön erősebbik szemére, {ed} mm-es lencseátmérőnél', ed=frame_ed) }}</p>
+      {% if swatch_rows %}
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Színezés — színválaszték') }}</h2>
+            <p class="card__subtitle">{{ t('Színminták a Szín katalógusból — koppintson egy színre') }}</p>
+          </div>
+        </div>
+        {% for row in swatch_rows %}
+        <div class="field">
+          <span class="label">{{ row.name }} · {{ row.gross }}</span>
+          <div class="toolbar">
+            {% for c in row.colors %}
+            <a class="btn btn--ghost btn--sm" href="{{ c.url }}"
+               style="{% if c.active %}outline:2px solid var(--primary,#C9A961);{% endif %}">
+              <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:{{ c.hex }};vertical-align:-2px;margin-right:6px"></span>{{ c.name }}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Mennyire lesz vékony a lencse?') }}</h2>
+            <p class="card__subtitle">{{ t('Becsült szélvastagság az Ön erősebbik szemére, {ed} mm-es lencseátmérőnél', ed=frame_ed) }}</p>
+          </div>
+        </div>
+        <table class="table">
+          <tbody>
+          {% for x in thick %}
+            <tr>
+              <td style="width:12%" class="tnum"><b>{{ x.index }}</b></td>
+              <td>
+                <div style="background:var(--primary-soft);border-radius:6px;height:22px;width:{{ x.bar_pct }}%;min-width:36px"></div>
+              </td>
+              <td style="width:20%" class="tnum">{{ x.edge }} mm · {{ t('súly') }} ×{{ x.weight }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <p class="hint">{{ t('Becsült érték — a pontos vastagságot a gyártó számítja a rendeléskor. Kisebb keret gyakran többet vékonyít, mint egy indexugrás.') }}</p>
       </div>
     </div>
-    <table class="table">
-      <tbody>
-      {% for x in thick %}
-        <tr>
-          <td style="width:12%" class="tnum"><b>{{ x.index }}</b></td>
-          <td>
-            <div style="background:var(--primary-soft);border-radius:6px;height:22px;width:{{ x.bar_pct }}%;min-width:36px"></div>
-          </td>
-          <td style="width:20%" class="tnum">{{ x.edge }} mm · {{ t('súly') }} ×{{ x.weight }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    <p class="hint">{{ t('Becsült érték — a pontos vastagságot a gyártó számítja a rendeléskor. Kisebb keret gyakran többet vékonyít, mint egy indexugrás.') }}</p>
+
+    <div>
+      <div class="card" style="position:sticky;top:12px">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Az Ön kosara') }}</h2>
+            <p class="card__subtitle">{{ t('Minden kiválasztott tétel, bruttó árakkal') }}</p>
+          </div>
+        </div>
+        {% if basket %}
+        <table class="table">
+          <tbody>
+          {% for l in basket.lines %}
+            <tr><td>{{ l.name }}</td><td class="tnum" style="width:36%">{{ l.gross }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <p class="kpi__value tnum">{{ basket.total }}</p>
+        <p class="hint">{{ t('Összesen, bruttó — 27% ÁFA-val') }}</p>
+        <div class="toolbar">
+          <a class="btn btn--primary btn--sm" href="{{ basket.quote_url }}">{{ t('Ajánlat megnyitása') }}</a>
+        </div>
+        {% else %}
+        <p class="hint">{{ t('Ezekre az erősségekre nincs elérhető lencsepár.') }}</p>
+        {% endif %}
+
+        <div class="card__header" style="margin-top:12px">
+          <div>
+            <h2 class="card__title">{{ t('Keret') }}</h2>
+          </div>
+        </div>
+        {% if frame %}
+          <p>{{ frame.name }} <span class="code">{{ frame.sku }}</span> ·
+             <a href="{{ kurl(frame=None) }}">{{ t('eltávolítás') }}</a></p>
+        {% endif %}
+        <form method="get" action="{{ url_for('konzultacio') }}">
+          {% for k in ('od_sph','od_cyl','os_sph','os_cyl','frame_ed','tier','tint','frame','person') %}{% if f.get(k) %}<input type="hidden" name="{{ k }}" value="{{ f.get(k) }}">{% endif %}{% endfor %}
+          <div class="toolbar">
+            <input class="input" name="qf" value="{{ frame_query }}" placeholder="{{ t('Keret keresése…') }}" aria-label="{{ t('Keret keresése…') }}">
+            <button class="btn btn--soft btn--sm" type="submit">{{ t('Keresés') }}</button>
+          </div>
+        </form>
+        {% if frame_hits %}
+        <table class="table">
+          <tbody>
+          {% for h in frame_hits %}
+            <tr><td>{{ h.name }}</td><td class="tnum">{{ h.net }}</td>
+                <td><a class="btn btn--soft btn--sm" href="{{ h.add_url }}">{{ t('Add') }}</a></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
 {% endblock %}

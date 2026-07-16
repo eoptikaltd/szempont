@@ -80,6 +80,22 @@ def load_snapshot() -> CatalogSnapshot:
                            overrides=overrides, vat_rate=D("0.27"))
 
 
+# --- Szín catalog (M2C swatches) --------------------------------------------
+# Tint colors per tint surcharge code. Demo values now; the live source is the
+# supplier color chart once it lands in BQ — same shape, keyed by code.
+TINT_SWATCHES: dict[str, tuple[tuple[str, str], ...]] = {
+    "tint_solid": (("Barna", "#8B5A2B"), ("Szürke", "#6E6E6E"),
+                   ("Zöld", "#3E5F4B"), ("Kék", "#33587A")),
+}
+
+
+def tint_swatches(snapshot: CatalogSnapshot) -> dict[str, tuple]:
+    """Swatches for tint surcharges the ACTIVE snapshot actually offers —
+    empty dict when the live catalog carries no tints (section hidden)."""
+    return {code: TINT_SWATCHES[code]
+            for code in snapshot.surcharges if code in TINT_SWATCHES}
+
+
 # --- real-data mode ---------------------------------------------------------
 import os
 

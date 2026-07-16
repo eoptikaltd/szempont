@@ -72,6 +72,66 @@ def test_quote_curated_discount_applied_and_gated():
     assert "ismeretlen kedvezmény" in unknown
 
 
+# ------------------------------------------------------------ W2 item 4 (M2C)
+def test_konzultacio_basket_always_visible_with_tier_and_frame():
+    b = c().get("/konzultacio?od_sph=-2&os_sph=-2").data.decode()
+    assert "Az Ön kosara" in b
+    assert "Szemüvegkészítés munkadíj" in b     # basket through the record path
+    assert "Ezt nézzük meg" in b                # tier select links
+    with_frame = c().get("/konzultacio?od_sph=-2&os_sph=-2&tier=Alap"
+                         "&frame=FRM-EO-CLASS-01").data.decode()
+    assert "eOptika Classic 01 acél keret" in with_frame
+    assert "a kosárban" in with_frame           # Alap marked selected
+    # Alap tier = EYT-ALAP 6900/eye: 2x6900 + 14900 frame + 4500 munkadíj
+    # = 33200 net -> 42164 gross
+    assert "42 164 Ft" in with_frame
+
+
+def test_konzultacio_tint_swatches_from_szin_catalog():
+    b = c().get("/konzultacio?od_sph=-2&os_sph=-2").data.decode()
+    assert "Színminták a Szín katalógusból" in b and "Barna" in b
+    tinted = c().get("/konzultacio?od_sph=-2&os_sph=-2&tint=Barna").data.decode()
+    assert "Színezés (egyszínű)" in tinted      # tint option lands in basket
+    # snapshot without tint surcharges -> section hidden (live-catalog guard)
+    from app.catalog import tint_swatches
+    from tests.test_pricing import snapshot
+    import dataclasses
+    snap = snapshot()
+    bare = dataclasses.replace(snap, surcharges={})
+    assert tint_swatches(bare) == {}
+
+
+def test_print_munkalap_wires_data_and_real_barcodes():
+    b = c().get("/print/munkalap?sku_r=HOY-NLX-160-HMC-70"
+                "&sku_l=HOY-NLX-150-HMC-70&od_sph=0.75&od_cyl=-0.25&od_ax=100"
+                "&frame=FRM-RB-5228&person=P-1001&order=SO-1604869D"
+                "&due=2026-07-18").data.decode()
+    assert "Hoya Nulux 1.60 HMC" in b and "Hoya Nulux 1.50 HMC" in b
+    assert "+0,75" in b and "−0,25" in b and "100°" in b
+    assert "Kovács Éva" in b and "SO-1604869D" in b
+    assert "07. 18." in b and "szombat" in b
+    assert b.count("<svg") >= 4                 # order + frame + 2 lens codes
+    from app.barcodes import ean13_fullcode
+    assert ean13_fullcode("599811241152") in b  # frame EAN-13, true check digit
+    body = b.split("</style>")[1]
+    assert 'class="ean"' not in body            # CSS placeholder stripes gone
+    assert 'class="sobar"' not in body
+    assert c().get("/print/munkalap?sku_r=NOPE").status_code == 404
+
+
+def test_print_latasvizsgalat_pass_through_only():
+    # values render when passed, nothing stored, blank otherwise
+    b = c().get("/print/latasvizsgalat?name=Kovács Éva&ar_j_sph=−6.75"
+                "&pd_j=29.5").data.decode()
+    assert "Kovács Éva" in b and "−6.75" in b and "29.5" in b
+    blank = c().get("/print/latasvizsgalat").data.decode()
+    assert "Minta Anna" not in blank            # no demo leakage
+    demo = c().get("/print/latasvizsgalat?demo=1").data.decode()
+    assert "Minta Anna" in demo and "JJ OATP" in demo
+    prefilled = c().get("/print/latasvizsgalat?person=P-1001").data.decode()
+    assert "Kovács Éva" in prefilled and "P-1001" in prefilled
+
+
 def test_auto_approved_gated_discount_audited_on_apply_never_on_render():
     # Review rulings (2026-07-16): pre-M5 auto-approvals audited with marker,
     # exactly ONE event per applied discount — POST/apply path only, GET
