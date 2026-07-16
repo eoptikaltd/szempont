@@ -32,6 +32,8 @@ from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
                             totals)
 from quotes.store import discount_audit_event                    # noqa: E402
 from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
+from iris import (FixturePersonDirectory, InMemoryWalkinStore,   # noqa: E402
+                  attributed_person_id, is_z1, new_walkin)
 
 app = Flask(__name__)
 APP_NAME = "Szempont"
@@ -48,6 +50,25 @@ if os.environ.get("SZEMPONT_FRAMES") == "unas":  # pragma: no cover
     FRAMES = UnasFrameSource(api_key=os.environ["UNAS_API_KEY"])
 else:
     FRAMES = DemoFrameSource()
+
+# M3: IRIS person directory + Z1 walk-in store (contracts/iris_contract.md).
+# Fixture-backed until IRIS publishes the two views; flipping to BQ is a
+# config change (SZEMPONT_IRIS=bq), never a code change.
+if os.environ.get("SZEMPONT_IRIS") == "bq":  # pragma: no cover
+    from google.cloud import bigquery
+    from iris.directory import BQPersonDirectory, DEFAULT_LOOKUP_VIEW, \
+        DEFAULT_SEARCH_VIEW
+    from iris.walkins import BQWalkinStore
+    _bq = bigquery.Client(project=os.environ.get(
+        "GCP_PROJECT", "natural-caster-496309-j3"))
+    DIRECTORY = BQPersonDirectory(
+        _bq,
+        search_view=os.environ.get("IRIS_SEARCH_VIEW", DEFAULT_SEARCH_VIEW),
+        lookup_view=os.environ.get("IRIS_LOOKUP_VIEW", DEFAULT_LOOKUP_VIEW))
+    WALKINS = BQWalkinStore(_bq)
+else:
+    DIRECTORY = FixturePersonDirectory()
+    WALKINS = InMemoryWalkinStore()
 
 # Pre-M5 audit shim: events collected in-process; staging loads them to
 # szempont.audit_log (same row shape) through the BQ store path.
@@ -123,6 +144,67 @@ def _dec(name, default="0"):
         return Decimal(default)
 
 
+def _person_view(person_param: str) -> dict | None:
+    """Chip data for a person_id or Z1 token: resolves Z1 through the
+    walkin_resolutions mapping at read time (rows never rewritten)."""
+    pid = (person_param or "").strip()
+    if not pid:
+        return None
+    if is_z1(pid):
+        resolved = attributed_person_id(pid, WALKINS)
+        card = DIRECTORY.lookup(resolved) if resolved != pid else None
+        walkin = WALKINS.get(pid)
+        return {
+            "id": pid, "walkin": True,
+            "resolved": resolved if resolved != pid else None,
+            "name": card.display_name if card
+                    else (walkin.display_name if walkin else pid),
+            "ep_hint": card.ep_member_hint if card
+                       else bool(walkin and walkin.ep_member),
+        }
+    card = DIRECTORY.lookup(pid)
+    return {
+        "id": pid, "walkin": False, "resolved": None,
+        "name": card.display_name if card else pid,
+        "ep_hint": card.ep_member_hint if card else False,
+    }
+
+
+@app.route("/ugyfel")
+def ugyfel():
+    """M3 customer search — v_person_search semantics via the directory
+    adapter (A-grade zone only), with the Z1 walk-in fallback form."""
+    q = request.args.get("q", "").strip()
+    results = DIRECTORY.search(q) if q else []
+    return render_template("ugyfel.html", page_title="Ügyfél", q=q,
+                           results=results, searched=bool(q))
+
+
+@app.route("/ugyfel/walkin", methods=["POST"])
+def ugyfel_walkin():
+    """Z1 walk-in capture: mints a Z1-<uuid> token (NOT a person id —
+    hard rule 4), saves to szempont.walkin_persons, and continues straight
+    to the finder so the walk-in never blocks a sale."""
+    f = request.form
+    try:
+        w = new_walkin(
+            display_name=f.get("name", ""), created_by=ACTOR,
+            phone_raw=f.get("phone", "").strip(),
+            email_raw=f.get("email", "").strip(),
+            birth_date=f.get("birth_date", "").strip(),
+            ep_member=bool(f.get("ep_member")),
+            ep_fund_name=f.get("ep_fund_name", "").strip(),
+            ep_member_id=f.get("ep_member_id", "").strip(),
+            gdpr_signed=bool(f.get("gdpr_signed")),
+            dm_ok=bool(f.get("dm_ok")))
+    except ValueError as e:
+        return render_template("ugyfel.html", page_title="Ügyfél", q="",
+                               results=[], searched=False,
+                               walkin_error=str(e)), 400
+    WALKINS.save(w)
+    return redirect(url_for("finder", person=w.z1_token))
+
+
 @app.route("/")
 def finder():
     """Prescription-pad-first lens finder (research: Glasson/ClearVis pattern).
@@ -130,6 +212,7 @@ def finder():
     priced as R-SKU + L-SKU, margin-sorted."""
     snap = load_snapshot()
     today = dt.date.today().isoformat()
+    person = request.args.get("person", "").strip()
 
     od = EyeRx(sph=_dec("od_sph", "-2.00"), cyl=_dec("od_cyl", "0"),
                add=_dec("od_add", "0"))
@@ -161,7 +244,8 @@ def finder():
         # quote link carries the representative picks so the quote page opens
         # priced exactly as listed (the optician can re-chip from the finder)
         "quote_url": url_for("quote", sku_r=p.right.sku, sku_l=p.left.sku,
-                             opt=sorted(options | p.representative_codes)),
+                             opt=sorted(options | p.representative_codes),
+                             person=person or None),
     } for p in pairs]
 
     # D5: mandatory-choice surcharges render as one-of chip groups; the rest
@@ -189,6 +273,7 @@ def finder():
         "finder.html", page_title="Lens finder", rows=rows, kpis=kpis,
         f=request.args, surcharges=plain_surcharges,
         choice_groups=choice_groups, options=options,
+        person=person, person_view=_person_view(person),
     )
 
 
@@ -215,6 +300,7 @@ def quote():
 
     frame_sku = request.args.get("frame", "")
     frame = FRAMES.get(frame_sku) if frame_sku else None
+    person = request.args.get("person", "").strip()
 
     record = build_quote_record(
         quote_id="preview", quote_date=today, created_by=ACTOR,
@@ -222,6 +308,9 @@ def quote():
         engine_quotes=[("OD", qr), ("OS", ql)],
         frame=(frame.sku, frame.name, frame.retail_net) if frame else None,
         auto_services=[MUNKADIJ],
+        # Z1 tokens are stored as-is; re-attribution happens through the
+        # walkin_resolutions join at read time, never by rewriting rows.
+        person_id=person or None,
     )
 
     discount_id = request.args.get("discount", "")
@@ -252,7 +341,8 @@ def quote():
 
     t_ = totals(record)
     base_params = {"sku_r": sku_r, "sku_l": sku_l, "opt": sorted(options),
-                   "frame": frame_sku or None, "discount": discount_id or None}
+                   "frame": frame_sku or None, "discount": discount_id or None,
+                   "person": person or None}
 
     frame_query = request.args.get("qf", "").strip()
     frame_hits = [{
@@ -286,7 +376,7 @@ def quote():
         frame=frame, frame_query=frame_query, frame_hits=frame_hits,
         discount_configs=load_discount_configs(), discount_id=discount_id,
         applied_config=applied_config, discount_error=discount_error,
-        base_params=base_params,
+        base_params=base_params, person_view=_person_view(person),
     )
 
 

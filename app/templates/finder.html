@@ -15,9 +15,11 @@
       <div>
         <h2 class="card__title">{{ t('Prescription') }}</h2>
         <p class="card__subtitle">{{ t('Entered exactly as on the paper Rx — right eye first') }}</p>
+        {% include '_person_chip.html' %}
       </div>
     </div>
     <form method="get" action="{{ url_for('finder') }}">
+      {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
       <table class="table">
         <thead><tr><th></th><th>{{ t('Sphere') }}</th><th>{{ t('Cylinder') }}</th><th>{{ t('Addition') }}</th></tr></thead>
         <tbody>

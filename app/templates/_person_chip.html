@@ -1,0 +1,14 @@
+{% import '_macros.html' as ui %}
+{# Customer chip (M3): person_id or Z1 walk-in token with resolution state. #}
+{% if person_view %}
+<p class="card__subtitle">
+  {{ t('Customer') }}: <b>{{ person_view.name }}</b>
+  <span class="code">{{ person_view.id }}</span>
+  {% if person_view.walkin and not person_view.resolved %}{{ ui.pill(t('walk-in — awaiting IRIS resolution'), 'warning') }}{% endif %}
+  {% if person_view.resolved %}{{ ui.pill(t('resolved') ~ ' · ' ~ person_view.resolved, 'success') }}{% endif %}
+  {% if person_view.ep_hint %}{{ ui.pill(t('EP member?'), 'info') }}{% endif %}
+  · <a href="{{ url_for('ugyfel') }}">{{ t('Change') }}</a>
+</p>
+{% else %}
+<p class="card__subtitle"><a href="{{ url_for('ugyfel') }}">{{ t('Select customer') }}</a></p>
+{% endif %}

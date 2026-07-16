@@ -20,4 +20,4 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.setuptools.packages.find]
-include = ["pricing*", "ingest*", "quotes*", "vendors*"]
+include = ["pricing*", "ingest*", "quotes*", "vendors*", "iris*"]

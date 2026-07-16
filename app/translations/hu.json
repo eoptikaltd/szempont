@@ -40,5 +40,23 @@
   "Curated configs only — free-form discounts do not exist": "Csak előre rögzített kedvezmények — egyedi kedvezmény nem adható",
   "approval required": "jóváhagyás szükséges",
   "No discount": "Nincs kedvezmény",
-  "Approved by {name} — logged to the audit trail on save.": "Jóváhagyta: {name} — mentéskor az audit naplóba kerül."
+  "Approved by {name} — logged to the audit trail on save.": "Jóváhagyta: {name} — mentéskor az audit naplóba kerül.",
+
+  "Customer": "Ügyfél", "Select customer": "Ügyfél kiválasztása", "Change": "Módosítás",
+  "Customer search": "Ügyfélkeresés",
+  "A-grade fulfilment zone only — IRIS owns identity": "Csak A-zónás ügyfélkör — az azonosítót az IRIS adja",
+  "Name, phone or email": "Név, telefonszám vagy e-mail",
+  "Search": "Keresés", "Select": "Kiválasztás",
+  "Name": "Név", "Phone": "Telefon", "Email": "E-mail",
+  "Birth date": "Születési dátum",
+  "No matching customer — capture a walk-in below.": "Nincs egyező ügyfél — rögzítsd betérőként lent.",
+  "Walk-in capture (Z1)": "Betérő rögzítése (Z1)",
+  "The walk-in never blocks a sale — IRIS resolves the Z1 token overnight.": "A betérő sosem akasztja meg az eladást — a Z1 tokent az IRIS éjszaka oldja fel.",
+  "EP member": "EP-tag", "EP member?": "EP-tag?",
+  "EP fund": "Egészségpénztár", "Member ID": "Tagsági azonosító",
+  "GDPR signed": "GDPR aláírva", "no GDPR": "nincs GDPR",
+  "Marketing OK": "Marketing hozzájárulás", "DM blocked": "DM tiltva",
+  "Create walk-in and start sale": "Betérő rögzítése és eladás indítása",
+  "walk-in — awaiting IRIS resolution": "betérő — IRIS-feloldásra vár",
+  "resolved": "azonosítva"
 }
