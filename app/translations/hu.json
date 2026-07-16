@@ -40,7 +40,7 @@
   "Curated configs only — free-form discounts do not exist": "Csak előre rögzített kedvezmények — egyedi kedvezmény nem adható",
   "approval required": "jóváhagyás szükséges",
   "No discount": "Nincs kedvezmény",
-  "Approved by {name} — logged to the audit trail on save.": "Jóváhagyta: {name} — mentéskor az audit naplóba kerül.",
+  "Approved by {name} — logged to the audit trail.": "Jóváhagyta: {name} — az audit naplóba került.",
 
   "Customer": "Ügyfél", "Select customer": "Ügyfél kiválasztása", "Change": "Módosítás",
   "Customer search": "Ügyfélkeresés",

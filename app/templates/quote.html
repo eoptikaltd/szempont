@@ -92,7 +92,8 @@
           </div>
         </div>
         {% if discount_error %}<p class="hint status--danger">{{ discount_error }}</p>{% endif %}
-        <form method="get" action="{{ url_for('quote') }}">
+        {# POST apply path: audit happens here, never on page render #}
+        <form method="post" action="{{ url_for('quote_discount') }}">
           {% for k, v in base_params.items() if v and k not in ('opt', 'discount') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
           {% for o in base_params.opt %}<input type="hidden" name="opt" value="{{ o }}">{% endfor %}
           {% for c in discount_configs %}
@@ -108,7 +109,7 @@
           <div class="toolbar"><button class="btn btn--soft" type="submit">{{ t('Apply') }}</button></div>
         </form>
         {% if applied_config and applied_config.requires_approval %}
-        <p class="hint">{{ t('Approved by {name} — logged to the audit trail on save.', name='Sabie Valner') }}</p>
+        <p class="hint">{{ t('Approved by {name} — logged to the audit trail.', name=approved_by_display) }}</p>
         {% endif %}
       </div>
 

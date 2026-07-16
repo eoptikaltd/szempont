@@ -72,17 +72,28 @@ def test_quote_curated_discount_applied_and_gated():
     assert "ismeretlen kedvezmény" in unknown
 
 
-def test_auto_approved_gated_discount_emits_marked_audit_event():
-    # Review ruling (2026-07-16): every pre-M5 auto-approval must be audited.
-    from app.app import AUDIT_EVENTS
+def test_auto_approved_gated_discount_audited_on_apply_never_on_render():
+    # Review rulings (2026-07-16): pre-M5 auto-approvals audited with marker,
+    # exactly ONE event per applied discount — POST/apply path only, GET
+    # renders never write audit.
+    from app.app import AUDIT_EVENTS, current_operator
     AUDIT_EVENTS.clear()
-    c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=DOLG25")
+    r = c().post("/quote/discount", data={
+        "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25"})
+    assert r.status_code == 302 and "discount=DOLG25" in r.headers["Location"]
     assert len(AUDIT_EVENTS) == 1
     ev = AUDIT_EVENTS[0]
     assert ev["event_type"] == "discount"
-    assert ev["actor"] == "sabie.valner"
+    assert ev["actor"] == current_operator()   # no literal operator names
     assert '"marker": "auto_approved_pre_m5"' in ev["payload"]
     assert '"discount_config_id": "DOLG25"' in ev["payload"]
+    # repeated renders of the applied discount: still exactly one event
+    for _ in range(3):
+        assert c().get("/quote?sku=HOY-NLX-160-HMC-70"
+                       "&discount=DOLG25").status_code == 200
+    assert len(AUDIT_EVENTS) == 1
     AUDIT_EVENTS.clear()
-    c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=TORZS10")  # not gated
+    c().post("/quote/discount", data={
+        "sku_r": "HOY-NLX-160-HMC-70", "discount": "TORZS10"})  # not gated
+    c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=TORZS10")
     assert AUDIT_EVENTS == []

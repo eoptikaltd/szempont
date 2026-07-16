@@ -133,9 +133,11 @@ def test_walkin_post_mints_z1_and_starts_sale():
     q = parse_qs(urlparse(r.headers["Location"]).query)
     token = q["person"][0]
     assert token.startswith("Z1-")
-    from app.app import WALKINS
+    from app.app import WALKINS, current_operator
     saved = WALKINS.get(token)
     assert saved.display_name == "Betérő Béla" and saved.ep_member is True
+    assert saved.gdpr_signed is True and saved.dm_ok is False  # consent flags
+    assert saved.created_by == current_operator()
     assert ui().post("/ugyfel/walkin", data={"name": "  "}).status_code == 400
 
 

@@ -40,8 +40,19 @@ APP_NAME = "Szempont"
 TOOL_ID = "szempont"
 HERE = os.path.dirname(__file__)
 
-# Auth is M5 (W3); until then the operator on the profile chip is the actor.
-ACTOR = "sabie.valner"
+def current_operator() -> str:
+    """Single source of the acting operator (review ruling 2026-07-16):
+    every actor field — audit events, quote created_by, walk-in created_by —
+    reads from here and nowhere else. Pre-M5 shim: fixed store operator from
+    env; M5 replaces the body with the authenticated session user."""
+    return os.environ.get("SZEMPONT_OPERATOR", "sabie.valner")
+
+
+def operator_display(op: str) -> str:
+    """'sabie.valner' -> 'Sabie Valner' for chips and hints."""
+    return " ".join(p.capitalize() for p in op.replace(".", " ").split())
+
+
 # D2: munkadíj auto-added to every basket, optician-editable/removable.
 # Amount is the demo config; the curated service price list lands with M2C.
 MUNKADIJ = ServiceLine("Szemüvegkészítés munkadíj", Decimal("4500"))
@@ -113,9 +124,12 @@ def inject_globals():
              or CATALOG_I18N.get("en", {}).get(key, key))
         return s.format(**kw) if kw else s
 
+    op = operator_display(current_operator())
     return dict(t=t, app_name=APP_NAME, lang=lang, languages=LANGUAGES,
                 density=_cookie("density", DENSITIES, "comfortable"),
-                nav=NAV, nav_active=TOOL_ID, huf=huf)
+                nav=NAV, nav_active=TOOL_ID, huf=huf,
+                operator_name=op,
+                operator_initials="".join(w[0] for w in op.split()[:2]).upper())
 
 
 @app.route("/set-lang")
@@ -188,7 +202,7 @@ def ugyfel_walkin():
     f = request.form
     try:
         w = new_walkin(
-            display_name=f.get("name", ""), created_by=ACTOR,
+            display_name=f.get("name", ""), created_by=current_operator(),
             phone_raw=f.get("phone", "").strip(),
             email_raw=f.get("email", "").strip(),
             birth_date=f.get("birth_date", "").strip(),
@@ -277,33 +291,18 @@ def finder():
     )
 
 
-@app.route("/quote")
-def quote():
-    """Pair quote assembled through the persistence record (W2 item 2):
-    lens pair + optional Unas frame + auto munkadíj + curated discount.
-    Stateless preview — saving lands with the person attach (M3)."""
+def _preview_record(sku_r: str, sku_l: str, options: frozenset[str],
+                    frame_sku: str, person: str, today: str):
+    """Shared quote assembly for the GET view and the POST apply path.
+    Raises PricingError for unknown SKUs / bad option combos."""
     snap = load_snapshot()
-    options = frozenset(request.args.getlist("opt"))
-    today = dt.date.today().isoformat()
-    sku_r = request.args.get("sku_r") or request.args.get("sku", "")
-    sku_l = request.args.get("sku_l") or sku_r
-    try:
-        qr = price_quote(snap, QuoteRequest(sku=sku_r, option_codes=options,
-                                            quote_date=today, quantity=1))
-        ql = price_quote(snap, QuoteRequest(sku=sku_l, option_codes=options,
-                                            quote_date=today, quantity=1))
-    except PricingError as e:
-        return render_template("quote.html", page_title="Quote", error=str(e),
-                               q=None, r=None, l=None, lines=[]), 404
-
-    lens_r, lens_l = snap.lenses[sku_r], snap.lenses[sku_l]
-
-    frame_sku = request.args.get("frame", "")
+    qr = price_quote(snap, QuoteRequest(sku=sku_r, option_codes=options,
+                                        quote_date=today, quantity=1))
+    ql = price_quote(snap, QuoteRequest(sku=sku_l, option_codes=options,
+                                        quote_date=today, quantity=1))
     frame = FRAMES.get(frame_sku) if frame_sku else None
-    person = request.args.get("person", "").strip()
-
     record = build_quote_record(
-        quote_id="preview", quote_date=today, created_by=ACTOR,
+        quote_id="preview", quote_date=today, created_by=current_operator(),
         created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
         engine_quotes=[("OD", qr), ("OS", ql)],
         frame=(frame.sku, frame.name, frame.retail_net) if frame else None,
@@ -312,6 +311,64 @@ def quote():
         # walkin_resolutions join at read time, never by rewriting rows.
         person_id=person or None,
     )
+    return snap, qr, ql, frame, record
+
+
+@app.route("/quote/discount", methods=["POST"])
+def quote_discount():
+    """D3 apply path (review ruling 2026-07-16): the POST applies the curated
+    discount and — for approval-gated configs — emits exactly ONE audit event
+    with the auto_approved_pre_m5 marker, then redirects (PRG) to the GET
+    view. Page renders never write audit."""
+    f = request.form
+    sku_r = f.get("sku_r", "")
+    sku_l = f.get("sku_l") or sku_r
+    options = frozenset(f.getlist("opt"))
+    frame_sku = f.get("frame", "")
+    person = f.get("person", "").strip()
+    discount_id = f.get("discount", "")
+    today = dt.date.today().isoformat()
+
+    cfg = get_discount_config(discount_id) if discount_id else None
+    if cfg is not None and cfg.requires_approval:
+        try:
+            *_, record = _preview_record(sku_r, sku_l, options, frame_sku,
+                                         person, today)
+            record = apply_discount(record, cfg,
+                                    approved_by=current_operator())
+            import uuid
+            _emit_audit(discount_audit_event(
+                record, uuid.uuid4().hex,
+                dt.datetime.now(dt.timezone.utc).isoformat(),
+                marker="auto_approved_pre_m5"))
+        except (PricingError, QuoteError):
+            pass  # the GET view renders the error; nothing was approved
+    return redirect(url_for("quote", sku_r=sku_r, sku_l=sku_l,
+                            opt=sorted(options), frame=frame_sku or None,
+                            person=person or None,
+                            discount=discount_id or None))
+
+
+@app.route("/quote")
+def quote():
+    """Pair quote assembled through the persistence record (W2 item 2):
+    lens pair + optional Unas frame + auto munkadíj + curated discount.
+    Stateless preview — pure render, NO audit writes on GET (discounts are
+    applied and audited on the POST path above)."""
+    options = frozenset(request.args.getlist("opt"))
+    today = dt.date.today().isoformat()
+    sku_r = request.args.get("sku_r") or request.args.get("sku", "")
+    sku_l = request.args.get("sku_l") or sku_r
+    frame_sku = request.args.get("frame", "")
+    person = request.args.get("person", "").strip()
+    try:
+        snap, qr, ql, frame, record = _preview_record(
+            sku_r, sku_l, options, frame_sku, person, today)
+    except PricingError as e:
+        return render_template("quote.html", page_title="Quote", error=str(e),
+                               q=None, r=None, l=None, lines=[]), 404
+
+    lens_r, lens_l = snap.lenses[sku_r], snap.lenses[sku_l]
 
     discount_id = request.args.get("discount", "")
     discount_error = None
@@ -322,20 +379,11 @@ def quote():
             discount_error = f"ismeretlen kedvezmény: {discount_id}"
         else:
             try:
-                # Approval UI is M5 (permissions); until then the operator on
-                # the profile chip auto-approves — EVERY such approval is
-                # audited with the auto_approved_pre_m5 marker (review ruling
-                # 2026-07-16).
                 record = apply_discount(
                     record, cfg,
-                    approved_by=ACTOR if cfg.requires_approval else None)
+                    approved_by=(current_operator()
+                                 if cfg.requires_approval else None))
                 applied_config = cfg
-                if cfg.requires_approval:
-                    import uuid
-                    _emit_audit(discount_audit_event(
-                        record, uuid.uuid4().hex,
-                        dt.datetime.now(dt.timezone.utc).isoformat(),
-                        marker="auto_approved_pre_m5"))
             except QuoteError as e:
                 discount_error = str(e)
 
@@ -376,6 +424,8 @@ def quote():
         frame=frame, frame_query=frame_query, frame_hits=frame_hits,
         discount_configs=load_discount_configs(), discount_id=discount_id,
         applied_config=applied_config, discount_error=discount_error,
+        approved_by_display=(operator_display(record.discount_approved_by)
+                             if record.discount_approved_by else None),
         base_params=base_params, person_view=_person_view(person),
     )
 
