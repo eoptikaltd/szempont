@@ -115,6 +115,32 @@
       </div>
 
       <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">Megrendelés</h2>
+            <p class="card__subtitle">{{ t('Converts this quote into an order with an SZP number — the quote stays reproducible.') }}</p>
+          </div>
+        </div>
+        {# M4 (W3-1): quote → order. POST mints the SZP- id; double-submit
+           replays the first order (form token). #}
+        <form method="post" action="{{ url_for('megrendeles_uj') }}">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
+          {% for k, v in base_params.items() if v and k != 'opt' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+          {% for o in base_params.opt %}<input type="hidden" name="opt" value="{{ o }}">{% endfor %}
+          <div class="field">
+            <span class="label">{{ t('Lens fulfilment') }}</span>
+            <label class="checkbox"><input type="radio" name="lens_source" value="rendeles" checked> Rendelésből</label>
+            <label class="checkbox"><input type="radio" name="lens_source" value="keszlet"> Készletről</label>
+          </div>
+          <label class="field"><span class="label">{{ t('Due date') }}</span>
+            <input class="input tnum" name="due" placeholder="2026-07-21"></label>
+          <div class="toolbar">
+            <button class="btn btn--primary" type="submit">{{ t('Create order') }}</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
         <div class="card__header"><h2 class="card__title">{{ t('Reproducibility') }}</h2></div>
         <div class="meta-grid">
           <div><div class="eyebrow">{{ t('Catalog version') }}</div><div class="code">{{ q.catalog_version }}</div></div>

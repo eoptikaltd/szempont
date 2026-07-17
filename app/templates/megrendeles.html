@@ -1,0 +1,132 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Megrendelés — M4 order detail (detail_view archetype).
+   Status machine buttons (forward only), R7 cancel (any staff, reason
+   mandatory, audited), eseménynapló, Tharanis dry-run artifact. #}
+{% block content %}
+
+  <div class="detail-head">
+    <div>
+      <div class="eyebrow">Megrendelés · {{ o.row.order_date }}</div>
+      <h2 class="card__title"><span class="code">{{ o.row.order_id }}</span>
+        {% if o.legacy_order_id %}<span class="sub">(ClearVisio: <span class="code">{{ o.legacy_order_id }}</span>)</span>{% endif %}</h2>
+      <p class="card__subtitle">{{ t('Recorded by') }}: {{ o.created_by }} ·
+        {{ t('Catalog version') }}: {{ o.catalog_version }}</p>
+      {% include '_person_chip.html' %}
+    </div>
+    <div>
+      {{ ui.pill(o.row.status_hu, o.row.tone) }}
+      {% if o.row.late %} {{ ui.pill('késő', 'danger') }}{% endif %}
+    </div>
+  </div>
+
+  <div class="kpis">
+    {{ ui.kpi(t('Total, gross'), o.totals.gross, '', 'info') }}
+    {{ ui.kpi(t('Due'), o.row.due_date, 'vállalt határidő',
+              'danger' if o.row.late else 'muted') }}
+    {{ ui.kpi(t('Lens'), 'Rendelésből' if o.row.lens_source == 'rendeles' else 'Készletről') }}
+    {{ ui.kpi(t('Discount (net)'), o.totals.discount) }}
+  </div>
+
+  <div class="cols-main">
+    <div>
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">{{ t('Order lines (net)') }}</h2></div>
+        <table class="table">
+          <thead><tr><th>{{ t('Type') }}</th><th>{{ t('Item') }}</th>
+            <th class="tnum">{{ t('Qty') }}</th><th class="tnum">{{ t('Unit net') }}</th>
+            <th class="tnum">{{ t('Net') }}</th></tr></thead>
+          <tbody>
+            {% for x in o.lines %}
+            <tr>
+              <td>{{ ui.pill(t(x.type), 'info' if x.type == 'lens' else ('warning' if x.type == 'discount' else 'muted')) }}</td>
+              <td>{{ x.name }}{% if x.auto %} {{ ui.pill(t('auto-added'), 'muted') }}{% endif %}
+                {% if x.sku %}<div class="sub code">{{ x.sku }}</div>{% endif %}</td>
+              <td class="tnum">{{ x.qty }}</td>
+              <td class="tnum">{{ x.unit }}</td>
+              <td class="tnum">{{ x.net }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="toolbar">
+          <span class="hint">{{ t('Net') }}: <b class="tnum">{{ o.totals.net }}</b>
+            · ÁFA: <b class="tnum">{{ o.totals.vat }}</b>
+            · {{ t('Total, gross') }}: <b class="tnum">{{ o.totals.gross }}</b></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Eseménynapló</h2></div>
+        {% if events %}
+        <table class="table">
+          <thead><tr><th>{{ t('When') }}</th><th>{{ t('Who') }}</th><th>{{ t('What') }}</th></tr></thead>
+          <tbody>
+          {% for e in events %}
+            <tr>
+              <td class="tnum">{{ e.occurred_at }}</td>
+              <td>{{ e.actor }}</td>
+              <td>{{ e.note }}
+                {% if e.payload and e.type == 'tharanis_dry_run' %}
+                <details><summary class="hint">berak XML (dry-run)</summary>
+                  <pre class="code" style="white-space:pre-wrap">{{ e.payload }}</pre>
+                </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="hint">{{ t('No events yet.') }}</p>{% endif %}
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">{{ t('Actions') }}</h2></div>
+        {% if o.cancel_reason %}
+          <p class="hint status--danger">Lemondva — {{ o.cancel_reason }}</p>
+        {% endif %}
+        {% for value, label in o.next_statuses %}
+        <form method="post" action="{{ url_for('megrendeles_status', order_id=o.row.order_id) }}">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
+          <input type="hidden" name="target" value="{{ value }}">
+          <div class="toolbar">
+            <button class="btn btn--soft" type="submit">→ {{ label }}</button>
+          </div>
+        </form>
+        {% endfor %}
+        <div class="toolbar">
+          <a class="btn btn--ghost" href="{{ o.munkalap_url }}" target="_blank">{{ t('Munkalap (print)') }}</a>
+        </div>
+        <form method="post" action="{{ url_for('megrendeles_tharanis', order_id=o.row.order_id) }}">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
+          <div class="toolbar">
+            <button class="btn btn--ghost" type="submit">Tharanis XML (dry-run)</button>
+            <span class="hint">mód: {{ o.tharanis_mode }} — éles küldés zárolva (F-W3-01)</span>
+          </div>
+        </form>
+      </div>
+
+      {% if not o.terminal %}
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Cancel order') }}</h2>
+            <p class="card__subtitle">{{ t('Any staff member may cancel — every cancel is audited with your name (R7).') }}</p>
+          </div>
+        </div>
+        <form method="post" action="{{ url_for('megrendeles_lemond', order_id=o.row.order_id) }}"
+              onsubmit="return confirm('Biztosan lemondod a megrendelést? Ez naplózásra kerül.')">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
+          <label class="field"><span class="label">{{ t('Reason') }} *</span>
+            <input class="input" name="reason" required></label>
+          <div class="toolbar">
+            <button class="btn btn--danger" type="submit">Lemondás</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+{% endblock %}

@@ -71,5 +71,25 @@
   "GDPR and EP declarations to be signed will queue here.": "Ide gyűlnek majd az aláírandó GDPR- és EP-nyilatkozatok.",
   "Finished glasses ready for handover will queue here.": "Ide gyűlnek majd az átadásra kész szemüvegek.",
   "No lens pair selected": "Nincs kiválasztott lencsepár",
-  "Pick a pair in the Lencsekereső first — the quote opens from there.": "Előbb válassz párt a Lencsekeresőben — az ajánlat onnan nyílik."
+  "Pick a pair in the Lencsekereső first — the quote opens from there.": "Előbb válassz párt a Lencsekeresőben — az ajánlat onnan nyílik.",
+
+  "Orders shown": "Megjelenített megrendelések",
+  "Same quick filters as ClearVis — parallel-run vocabulary": "Ugyanazok a gyorsszűrők, mint a ClearVisben — párhuzamos futás alatt közös szókincs",
+  "Order": "Megrendelés", "Source": "Forrás",
+  "Due": "Határidő", "Gross": "Bruttó", "Status": "Státusz",
+  "No orders match this filter.": "Nincs a szűrőnek megfelelő megrendelés.",
+  "Orders are born on the quote page — configure a pair in the Lencsekereső, then Megrendelés.": "A megrendelés az ajánlat oldalon születik — állíts össze egy párt a Lencsekeresőben, majd Megrendelés.",
+  "Recorded by": "Rögzítette",
+  "Order lines (net)": "Megrendelés tételei (nettó)",
+  "When": "Mikor", "Who": "Ki", "What": "Mi történt",
+  "No events yet.": "Még nincs esemény.",
+  "Actions": "Műveletek",
+  "Munkalap (print)": "Munkalap (nyomtatás)",
+  "Cancel order": "Megrendelés lemondása",
+  "Any staff member may cancel — every cancel is audited with your name (R7).": "Bármely munkatárs lemondhatja — minden lemondás a neveddel kerül naplózásra.",
+  "Reason": "Indoklás",
+  "Converts this quote into an order with an SZP number — the quote stays reproducible.": "Az ajánlatból SZP-számú megrendelés lesz — az ajánlat visszakereshető marad.",
+  "Lens fulfilment": "Lencse biztosítása",
+  "Due date": "Vállalt határidő",
+  "Create order": "Megrendelés létrehozása"
 }

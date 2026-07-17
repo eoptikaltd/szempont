@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Megrendelések — M4 order list (list_monitor archetype).
+   ClearVis quick-filter chips verbatim + időszak selector (functional
+   audit parity). Late orders get the danger pill regardless of status. #}
+{% block content %}
+
+  <div class="kpis">
+    {{ ui.kpi(t('Orders shown'), rows|length) }}
+    {{ ui.kpi('Megrendelendő', counts.megrendelendo, '', 'progress') }}
+    {{ ui.kpi('Kiadható', counts.kiadhato, '', 'success') }}
+    {{ ui.kpi('Késő', counts.keso, '', 'danger' if counts.keso else 'muted') }}
+  </div>
+
+  <div class="card">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">Megrendelések</h2>
+        <p class="card__subtitle">{{ t('Same quick filters as ClearVis — parallel-run vocabulary') }}</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      {% for key, label in filters %}
+      <a class="chip {{ 'chip--active' if key == szuro }}"
+         href="{{ url_for('megrendelesek', szuro=key, napok=napok) }}">{{ label }}
+        <span class="tnum">({{ counts[key] }})</span></a>
+      {% endfor %}
+      <div class="topbar__spacer"></div>
+      {% for d in (7, 30, 90, 365) %}
+      <a class="chip {{ 'chip--active' if napok == d }}"
+         href="{{ url_for('megrendelesek', szuro=szuro, napok=d) }}">{{ d }} nap</a>
+      {% endfor %}
+    </div>
+
+    {% if rows %}
+    <table class="table">
+      <thead><tr>
+        <th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Lens') }}</th>
+        <th>{{ t('Source') }}</th><th>{{ t('Due') }}</th><th>{{ t('Gross') }}</th>
+        <th>{{ t('Status') }}</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><span class="code">{{ r.order_id }}</span>
+            <div class="sub">{{ r.order_date }}</div></td>
+          <td>{{ r.person }}</td>
+          <td>{{ r.lens_summary }}</td>
+          <td>{{ 'Rendelésből' if r.lens_source == 'rendeles' else 'Készletről' }}</td>
+          <td class="tnum">{{ r.due_date }}
+            {% if r.late %} {{ ui.pill('késő', 'danger') }}{% endif %}</td>
+          <td class="tnum">{{ r.gross }}</td>
+          <td>{{ ui.pill(r.status_hu, r.tone) }}</td>
+          <td><a class="btn btn--soft btn--sm" href="{{ r.url }}">{{ t('View') }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <h4>{{ t('No orders match this filter.') }}</h4>
+      <p>{{ t('Orders are born on the quote page — configure a pair in the Lencsekereső, then Megrendelés.') }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+{% endblock %}

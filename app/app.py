@@ -8,6 +8,9 @@ Pages:
                  photochromic, options). Archetype: list_monitor.
   /quote         One configured quote in depth (lines, VAT, margin, override).
                  Archetype: detail_view.
+  /megrendelesek M4 order list — ClearVis quick-filter chips + időszak.
+  /megrendeles/x M4 order detail — status machine, eseménynapló, Tharanis
+                 dry-run (R1/F-W3-01: live write hard-blocked).
 
 Data source: catalog.load_snapshot() — demo fixture now, BigQuery
 szempont.lens_catalog_* once M1 has ingested a real supplier file.
@@ -30,10 +33,20 @@ from pricing.search import search                                # noqa: E402
 from app.barcodes import code128_svg, ean13_svg                  # noqa: E402
 from app.catalog import load_snapshot, tint_swatches             # noqa: E402
 from app.discounts import get_discount_config, load_discount_configs  # noqa: E402
-from quotes.records import (QuoteError, ServiceLine,             # noqa: E402
+from quotes.records import (QuoteError, QuoteStatus, ServiceLine,  # noqa: E402
                             apply_discount, build_quote_record,
                             gross_line_allocation, invoice_lines, totals)
-from quotes.store import discount_audit_event                    # noqa: E402
+from quotes.records import transition as quote_transition        # noqa: E402
+from quotes.store import InMemoryQuoteStore, discount_audit_event  # noqa: E402
+from orders.ids import next_order_id                             # noqa: E402
+from orders.records import (STATUS_HU, OrderError, OrderStatus,  # noqa: E402
+                            allowed_next, build_order_from_quote,
+                            cancel_order, order_totals, transition_order)
+from orders.store import InMemoryOrderStore                      # noqa: E402
+from orders.promotions import (InMemoryPromotionRegistry,        # noqa: E402
+                               register_first_sale)
+from vendors.tharanis import (TharanisOrderSink,                 # noqa: E402
+                              TharanisWriteBlocked)
 from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
 from iris import (FixturePersonDirectory, InMemoryWalkinStore,   # noqa: E402
                   attributed_person_id, is_z1, new_walkin)
@@ -83,6 +96,27 @@ if os.environ.get("SZEMPONT_IRIS") == "bq":  # pragma: no cover
 else:
     DIRECTORY = FixturePersonDirectory()
     WALKINS = InMemoryWalkinStore()
+
+# M4 stores (W3-1): in-memory for dev/tests; SZEMPONT_STORES=bq flips all
+# three to the BigQuery implementations (DDL 003) — config, never code.
+if os.environ.get("SZEMPONT_STORES") == "bq":  # pragma: no cover
+    from google.cloud import bigquery as _sbq
+    from orders.promotions import BQPromotionRegistry
+    from orders.store import BQOrderStore
+    from quotes.store import BQQuoteStore
+    _sclient = _sbq.Client(project=os.environ.get(
+        "GCP_PROJECT", "natural-caster-496309-j3"))
+    ORDERS = BQOrderStore(_sclient)
+    QUOTE_STORE = BQQuoteStore(_sclient)
+    PROMOTIONS = BQPromotionRegistry(_sclient)
+else:
+    ORDERS = InMemoryOrderStore()
+    QUOTE_STORE = InMemoryQuoteStore()
+    PROMOTIONS = InMemoryPromotionRegistry()
+
+# R1/F-W3-01: default off; dry_run renders the candidate berak XML onto the
+# eseménynapló; live is hard-blocked in the adapter (tripwire).
+THARANIS = TharanisOrderSink()
 
 # Pre-M5 audit shim: events collected in-process; staging loads them to
 # szempont.audit_log (same row shape) through the BQ store path.
@@ -153,7 +187,7 @@ TOOL_NAV = [
     {"label": "Lencsekereső", "endpoint": "finder",
      "children": [{"label": "Konzultáció", "endpoint": "konzultacio"}]},
     {"label": "Ajánlat", "endpoint": "quote"},
-    {"label": "Megrendelések", "wave": "W3"},
+    {"label": "Megrendelések", "endpoint": "megrendelesek"},
     {"label": "Eladások", "wave": "W3"},
     {"label": "Készlet", "wave": "W3"},
     {"label": "Kimutatások", "wave": "W3"},
@@ -656,6 +690,258 @@ def konzultacio():
                            frame_ed=frame_ed, basket=basket, frame=frame,
                            frame_query=frame_query, frame_hits=frame_hits,
                            swatch_rows=swatch_rows, kurl=kurl)
+
+
+# --------------------------------------------------------- M4 orders (W3-1)
+_STATUS_TONE = {
+    OrderStatus.FELVETT: "info", OrderStatus.MEGRENDELVE: "progress",
+    OrderStatus.BEERKEZETT: "info", OrderStatus.CSISZOLAS: "progress",
+    OrderStatus.KESZ: "success", OrderStatus.QC_KESZ: "success",
+    OrderStatus.ATADVA: "muted", OrderStatus.LEMONDVA: "danger",
+}
+
+# ClearVis quick-filter chips, verbatim vocabulary (functional audit).
+ORDER_FILTERS = (
+    ("mind", "Mind"),
+    ("megrendelendo", "Lencsék szállítótól megrendelendőek"),
+    ("keszleten", "Készleten"),
+    ("kiadhato", "Kiadható"),
+    ("keso", "Késő"),
+)
+
+
+def _order_is_late(o, today: str) -> bool:
+    return (o.due_date < today
+            and o.status not in (OrderStatus.ATADVA, OrderStatus.LEMONDVA))
+
+
+def _order_matches(o, szuro: str, today: str) -> bool:
+    if szuro == "megrendelendo":
+        return (o.status is OrderStatus.FELVETT
+                and o.lens_source == "rendeles")
+    if szuro == "keszleten":
+        return (o.status is OrderStatus.BEERKEZETT
+                or (o.status is OrderStatus.FELVETT
+                    and o.lens_source == "keszlet"))
+    if szuro == "kiadhato":
+        return o.status in (OrderStatus.KESZ, OrderStatus.QC_KESZ)
+    if szuro == "keso":
+        return _order_is_late(o, today)
+    return True
+
+
+def _order_row(o, today: str) -> dict:
+    lens = [l for l in o.lines if l.line_type == "lens" and not l.removed]
+    pv = _person_view(o.person_id or "")
+    return {
+        "order_id": o.order_id,
+        "status": o.status,
+        "status_hu": STATUS_HU[o.status],
+        "tone": _STATUS_TONE[o.status],
+        "late": _order_is_late(o, today),
+        "person": pv["name"] if pv else "—",
+        "lens_summary": (lens[0].name.split(" · ", 1)[-1]
+                         if lens else "(nincs lencse)"),
+        "lens_source": o.lens_source,
+        "order_date": o.order_date,
+        "due_date": o.due_date,
+        "gross": huf(order_totals(o).total_retail_gross),
+        "url": url_for("megrendeles", order_id=o.order_id),
+    }
+
+
+@app.route("/megrendeles/uj", methods=["POST"])
+def megrendeles_uj():
+    """Quote → order conversion (M4). Persists the quote (saved→converted),
+    mints the SZP- id (R4), saves the order (eseménynapló 'created'),
+    registers R13 first-sale SKUs. Double-submit replays the FIRST order."""
+    f = request.form
+    prior = token_replay_result(f.get("ftok"))
+    if prior is not None:
+        return redirect(url_for("megrendeles", order_id=prior))
+    sku_r = f.get("sku_r", "")
+    sku_l = f.get("sku_l") or sku_r
+    options = frozenset(f.getlist("opt"))
+    frame_sku = f.get("frame", "")
+    person = f.get("person", "").strip()
+    discount_id = f.get("discount", "")
+    lens_source = f.get("lens_source", "rendeles")
+    today = dt.date.today()
+    due_raw = f.get("due", "").strip()
+    try:
+        due = dt.date.fromisoformat(due_raw) if due_raw \
+            else today + dt.timedelta(days=3)
+    except ValueError:
+        due = today + dt.timedelta(days=3)
+
+    try:
+        *_, record = _preview_record(sku_r, sku_l, options, frame_sku,
+                                     person, today.isoformat())
+        if discount_id:
+            cfg = get_discount_config(discount_id)
+            if cfg is not None:
+                record = apply_discount(
+                    record, cfg,
+                    approved_by=(current_operator()
+                                 if cfg.requires_approval else None))
+        import uuid
+        import dataclasses as _dc
+        record = _dc.replace(record, quote_id=uuid.uuid4().hex)
+        order_id = next_order_id(ORDERS.all_ids(), today)
+        order = build_order_from_quote(
+            record, order_id=order_id, created_by=current_operator(),
+            created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+            order_date=today.isoformat(), due_date=due.isoformat(),
+            lens_source=lens_source)
+        # persist the quote trail: saved revision, then converted
+        saved = QUOTE_STORE.save(quote_transition(record, QuoteStatus.SAVED))
+        QUOTE_STORE.save(quote_transition(saved, QuoteStatus.CONVERTED,
+                                          order_id=order_id))
+        ORDERS.save(order, actor=current_operator())
+        new_promos = register_first_sale(PROMOTIONS, order)
+        if new_promos:
+            ORDERS.add_event(
+                order_id, "promotion", current_operator(),
+                note="Új SKU regisztrálva Tharanis cikktörzs-felvételre "
+                     f"(R13): {', '.join(r.sku for r in new_promos)}")
+    except (PricingError, QuoteError, OrderError) as e:
+        return f"megrendelés nem hozható létre: {e}", 400
+    token_mark_used(f.get("ftok"), order_id)
+    return redirect(url_for("megrendeles", order_id=order_id))
+
+
+@app.route("/megrendelesek")
+def megrendelesek():
+    """M4 order list — ClearVis quick-filter chips + időszak (list_monitor)."""
+    today = dt.date.today()
+    szuro = request.args.get("szuro", "mind")
+    if szuro not in {k for k, _ in ORDER_FILTERS}:
+        szuro = "mind"
+    try:
+        napok = max(1, min(365, int(request.args.get("napok", "30"))))
+    except ValueError:
+        napok = 30
+    cutoff = (today - dt.timedelta(days=napok)).isoformat()
+    t_iso = today.isoformat()
+    recent = [o for o in ORDERS.list_orders() if o.order_date >= cutoff]
+    rows = [_order_row(o, t_iso) for o in recent
+            if _order_matches(o, szuro, t_iso)]
+    counts = {key: sum(1 for o in recent if _order_matches(o, key, t_iso))
+              for key, _ in ORDER_FILTERS}
+    return render_template(
+        "megrendelesek.html", page_title="Megrendelések", rows=rows,
+        filters=ORDER_FILTERS, szuro=szuro, napok=napok, counts=counts)
+
+
+@app.route("/megrendeles/<order_id>")
+def megrendeles(order_id):
+    """M4 order detail — lines, status actions, eseménynapló (detail_view)."""
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    today = dt.date.today().isoformat()
+    t_ = order_totals(o)
+    lens = [l for l in o.lines if l.line_type == "lens" and not l.removed]
+    frame_line = next((l for l in o.lines
+                       if l.line_type == "frame" and not l.removed), None)
+    munkalap_url = url_for(
+        "print_munkalap",
+        sku_r=(lens[0].sku if lens else None),
+        sku_l=(lens[1].sku if len(lens) > 1 else (lens[0].sku if lens else None)),
+        frame=(frame_line.sku if frame_line else None),
+        person=o.person_id or None, order=o.order_id, due=o.due_date)
+    view = {
+        "row": _order_row(o, today),
+        "legacy_order_id": o.legacy_order_id,
+        "quote_id": o.quote_id,
+        "catalog_version": o.catalog_version,
+        "cancel_reason": o.cancel_reason,
+        "created_by": operator_display(o.created_by),
+        "totals": {"net": huf(t_.total_retail_net),
+                   "vat": huf(t_.total_vat),
+                   "discount": huf(t_.discount_net),
+                   "gross": huf(t_.total_retail_gross)},
+        "lines": [{"type": l.line_type, "name": l.name, "sku": l.sku or "",
+                   "qty": l.qty, "unit": huf(l.unit_retail_net),
+                   "net": huf(l.net), "auto": l.auto_added}
+                  for l in invoice_lines(o)],
+        "next_statuses": [(str(s), STATUS_HU[s]) for s in allowed_next(o)],
+        "terminal": o.status in (OrderStatus.ATADVA, OrderStatus.LEMONDVA),
+        "munkalap_url": munkalap_url,
+        "tharanis_mode": THARANIS.mode,
+    }
+    events = [{"occurred_at": e.occurred_at.replace("T", " ")[:16],
+               "actor": operator_display(e.actor),
+               "type": e.event_type, "note": e.note,
+               "payload": e.payload}
+              for e in reversed(ORDERS.events(order_id))]
+    return render_template("megrendeles.html",
+                           page_title=f"Megrendelés {o.order_id}",
+                           o=view, events=events,
+                           person_view=_person_view(o.person_id or ""),
+                           ftok=issue_form_token())
+
+
+@app.route("/megrendeles/<order_id>/status", methods=["POST"])
+def megrendeles_status(order_id):
+    """Forward status change. Double-submit replays (no duplicate events)."""
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    if token_replay_result(request.form.get("ftok")) is not None:
+        return redirect(url_for("megrendeles", order_id=order_id))
+    try:
+        target = OrderStatus(request.form.get("target", ""))
+        ORDERS.save(transition_order(o, target), actor=current_operator())
+        token_mark_used(request.form.get("ftok"), order_id)
+    except (ValueError, OrderError) as e:
+        return f"státuszváltás sikertelen: {e}", 400
+    return redirect(url_for("megrendeles", order_id=order_id))
+
+
+@app.route("/megrendeles/<order_id>/lemond", methods=["POST"])
+def megrendeles_lemond(order_id):
+    """R7: ANY staff member may cancel; reason mandatory; the store writes
+    the audit_log event with the actor. Confirm happens in the UI."""
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    if token_replay_result(request.form.get("ftok")) is not None:
+        return redirect(url_for("megrendeles", order_id=order_id))
+    try:
+        ORDERS.save(cancel_order(o, reason=request.form.get("reason", "")),
+                    actor=current_operator())
+        token_mark_used(request.form.get("ftok"), order_id)
+    except OrderError as e:
+        return f"lemondás sikertelen: {e}", 400
+    return redirect(url_for("megrendeles", order_id=order_id))
+
+
+@app.route("/megrendeles/<order_id>/tharanis", methods=["POST"])
+def megrendeles_tharanis(order_id):
+    """Tharanis DRY-RUN (R1/F-W3-01): renders the candidate berak XML onto
+    the eseménynapló. Never sends; live is hard-blocked in the adapter."""
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    if token_replay_result(request.form.get("ftok")) is not None:
+        return redirect(url_for("megrendeles", order_id=order_id))
+    p = _person_print_fields(o.person_id or "")
+    try:
+        out = THARANIS.send(o, customer_name=p["name"],
+                            customer_email=p["email"],
+                            customer_phone=p["phone"])
+    except TharanisWriteBlocked as e:
+        ORDERS.add_event(order_id, "note", current_operator(),
+                         note=f"Tharanis küldés elutasítva: {e}")
+        token_mark_used(request.form.get("ftok"), order_id)
+        return redirect(url_for("megrendeles", order_id=order_id))
+    ORDERS.add_event(order_id, "tharanis_dry_run", current_operator(),
+                     note="Tharanis berak XML előkészítve (dry-run, nem "
+                          "került elküldésre — F-W3-01)",
+                     payload=out["xml"])
+    token_mark_used(request.form.get("ftok"), order_id)
+    return redirect(url_for("megrendeles", order_id=order_id))
 
 
 # ------------------------------------------------------- print routes (item 4b)

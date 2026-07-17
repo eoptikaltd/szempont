@@ -237,7 +237,7 @@ def test_left_rail_renders_all_ia_map_items():
                   "Ajánlat", "Megrendelések", "Eladások", "Készlet",
                   "Kimutatások", "Adminisztráció"):
         assert label in b, label
-    assert b.count('aria-disabled="true"') == 5  # the five W3 items
+    assert b.count('aria-disabled="true"') == 4  # W3 items (Megrendelések live)
     for href in ('href="/lencsekereso"', 'href="/ugyfel"',
                  'href="/konzultacio"', 'href="/quote"'):
         assert href in b, href
@@ -253,6 +253,125 @@ def test_quote_without_sku_is_friendly_empty_state_not_404():
     r = c().get("/quote")
     assert r.status_code == 200
     assert "Nincs kiválasztott lencsepár" in r.data.decode()
+
+
+# ---------------------------------------------------------- W3-1 (M4 orders)
+def _create_order(**extra):
+    data = {"sku_r": "HOY-NLX-160-HMC-70", "sku_l": "HOY-NLX-150-HMC-70",
+            "frame": "FRM-RB-5228", "person": "P-1001",
+            "lens_source": "rendeles", "due": "2099-01-10"}
+    data.update(extra)
+    return c().post("/megrendeles/uj", data=data)
+
+
+def test_order_created_from_quote_with_szp_id_and_events():
+    r = _create_order()
+    assert r.status_code == 302
+    oid = r.headers["Location"].rsplit("/", 1)[-1]
+    assert oid.startswith("SZP-")
+    b = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "Felvett" in b and "Kovács Éva" in b
+    assert "Megrendelés felvéve" in b            # eseménynapló created row
+    assert "Hoya Nulux" in b and "Ray-Ban" in b
+    assert "2099-01-10" in b
+    # quote trail persisted and converted
+    from app.app import QUOTE_STORE
+    quotes = [q for revs in QUOTE_STORE._revs.values() for q in revs]
+    assert any(q.converted_order_id == oid for q in quotes)
+
+
+def test_order_double_submit_replays_first_szp_id():
+    body = c().get("/quote?sku_r=HOY-NLX-160-HMC-70").data.decode()
+    import re
+    tok = re.search(r'name="ftok" value="([0-9a-f]+)"', body).group(1)
+    first = _create_order(ftok=tok)
+    second = _create_order(ftok=tok)
+    assert first.headers["Location"] == second.headers["Location"]
+
+
+def test_order_status_flow_and_cancel_audited():
+    oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    assert c().post(f"/megrendeles/{oid}/status",
+                    data={"target": "megrendelve"}).status_code == 302
+    b = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "Megrendelve" in b
+    # backwards / illegal transition -> 400
+    assert c().post(f"/megrendeles/{oid}/status",
+                    data={"target": "felvett"}).status_code == 400
+    # cancel: any staff, reason mandatory, audited with actor (R7)
+    assert c().post(f"/megrendeles/{oid}/lemond",
+                    data={"reason": ""}).status_code == 400
+    assert c().post(f"/megrendeles/{oid}/lemond",
+                    data={"reason": "ügyfél visszalépett"}).status_code == 302
+    from app.app import ORDERS, current_operator
+    audit = [a for a in ORDERS.audit_events
+             if a["event_type"] == "order_cancel" and oid in a["payload"]]
+    assert len(audit) == 1 and audit[0]["actor"] == current_operator()
+    b = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "Lemondva" in b and "ügyfél visszalépett" in b
+    # terminal: no cancel card, no status buttons
+    assert "Megrendelés lemondása" not in b
+
+
+def test_order_list_quick_filters_and_period():
+    from app.app import ORDERS
+    ORDERS._revs.clear(); ORDERS._events.clear()
+    oid1 = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    oid2 = _create_order(lens_source="keszlet").headers["Location"]\
+        .rsplit("/", 1)[-1]
+    c().post(f"/megrendeles/{oid2}/status", data={"target": "beerkezett"})
+    c().post(f"/megrendeles/{oid2}/status", data={"target": "kesz"})
+    mind = c().get("/megrendelesek").data.decode()
+    assert oid1 in mind and oid2 in mind
+    assert "Lencsék szállítótól megrendelendőek" in mind   # audited chip text
+    rendel = c().get("/megrendelesek?szuro=megrendelendo").data.decode()
+    assert oid1 in rendel and oid2 not in rendel
+    kiadhato = c().get("/megrendelesek?szuro=kiadhato").data.decode()
+    assert oid2 in kiadhato and oid1 not in kiadhato
+    keso = c().get("/megrendelesek?szuro=keso").data.decode()
+    assert oid1 not in keso and oid2 not in keso           # future due dates
+    assert c().get("/megrendelesek?szuro=nonsense&napok=zzz").status_code == 200
+
+
+def test_order_tharanis_dry_run_writes_event_never_sends():
+    import app.app as A
+    from vendors.tharanis import TharanisOrderSink
+    oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    old = A.THARANIS
+    try:
+        A.THARANIS = TharanisOrderSink(mode="dry_run")
+        assert c().post(f"/megrendeles/{oid}/tharanis").status_code == 302
+    finally:
+        A.THARANIS = old
+    b = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "dry-run" in b and "berak" in b
+    assert "&lt;berak&gt;" in b                  # XML escaped into the page
+    ev = [e for e in A.ORDERS.events(oid) if e.event_type == "tharanis_dry_run"]
+    assert len(ev) == 1 and "<berak>" in ev[0].payload
+    # default sink (off) records the refusal as a note event
+    assert c().post(f"/megrendeles/{oid}/tharanis").status_code == 302
+    notes = [e for e in A.ORDERS.events(oid) if e.event_type == "note"]
+    assert any("elutasítva" in e.note for e in notes)
+
+
+def test_order_promotion_registered_on_first_sale_only():
+    from app.app import ORDERS, PROMOTIONS
+    ORDERS._revs.clear(); ORDERS._events.clear()
+    PROMOTIONS._rows.clear()
+    oid1 = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    ev1 = [e for e in ORDERS.events(oid1) if e.event_type == "promotion"]
+    assert len(ev1) == 1 and "HOY-NLX-160-HMC-70" in ev1[0].note
+    oid2 = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    assert [e for e in ORDERS.events(oid2)
+            if e.event_type == "promotion"] == []          # already known
+    assert {r.sku for r in PROMOTIONS.pending()} == \
+        {"HOY-NLX-160-HMC-70", "HOY-NLX-150-HMC-70"}
+
+
+def test_megrendelesek_nav_item_is_live():
+    b = c().get("/").data.decode()
+    assert 'href="/megrendelesek"' in b
+    assert b.count('aria-disabled="true"') == 4  # W3 badge came off one item
 
 
 def test_auto_approved_gated_discount_audited_on_apply_never_on_render():
