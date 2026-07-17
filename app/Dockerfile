@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r app/requirements.txt
 COPY pricing/ pricing/
 COPY ingest/ ingest/
 COPY quotes/ quotes/
+COPY orders/ orders/
 COPY vendors/ vendors/
 COPY iris/ iris/
 COPY app/ app/
