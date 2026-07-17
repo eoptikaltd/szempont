@@ -103,3 +103,25 @@ Secret Manager (`tharanis-ugyfelkod`, `tharanis-cegkod`, `tharanis-apikulcs`).
    commit only after this entry gains a "berak verified" follow-up.
 3. Batched external asks (for Sabie): Tharanis apiv3 API doc (berak sections
    for bejovo_megrendeles + cikk); write permission grants for both.
+
+---
+
+## F-W3-02 — W3-1 adversarial mini-review (M4 orders)
+
+Attack surfaces: order-create POST, status/cancel/dry-run POSTs, sequence
+minting, money path, XSS via reason/eseménynapló/XML payload, promotions.
+
+| # | Seam | Finding | Resolution |
+|---|---|---|---|
+| a | SZP sequence race | `orders/ids.py` documented an id-uniqueness backstop in the store, but `save()` did NOT enforce it — a collided id would silently APPEND the second order as revision 1 of the first (silent merge, worst-case money corruption). | **Fixed.** `save(..., expect_new=True)` on the creation path raises loud on an existing id (both stores); regression test pins one-revision-after-collision. Race window itself stays accepted (single terminal; documented). |
+| b | Discount provenance on order create | `POST /megrendeles/uj` silently ignored an unknown `discount` id — order priced without the discount the operator saw on screen. | **Fixed.** Unknown discount → 400 `ismeretlen kedvezmény`; test added. |
+| c | Gated-discount audit on order create | Order create re-applies the discount and the QUOTE store's save emits the discount audit event (BQ path writes audit_log), but WITHOUT the `auto_approved_pre_m5` marker the UI apply-path attaches. | **Accepted with note.** Marker unification lands in W3-2 (M5) which retires the shim entirely; until then order-created discounts are audited, marker-less. |
+| d | XSS | Cancel reason, event notes, dry-run XML all render through Jinja autoescape; test pins `&lt;berak&gt;` in the page and well-formed XML under hostile names. | **No defect.** |
+| e | CSRF/idempotency | Global same-origin guard covers the four new POSTs; ftok replay on create (first SZP id returned), status, cancel, dry-run. Tokenless double status-POST hits the transition guard (400), no double event. | **No defect** (tests). |
+| f | N+1 person lookups | `/megrendelesek` resolves the person chip per row — fixture-cheap, but the BQ directory would pay one lookup per order row. | **Accepted pre-staging**; batch lookup TODO recorded for the staging deploy checklist. |
+| g | Process note | The M4-core commit was pushed with the Dockerfile guard test red (caught by the guard, fixed in the next commit). | Rule reaffirmed: full suite green BEFORE push, no exceptions. |
+
+Manual increment (R20): three W3-1 chapters + screenshots landed in
+`docs/manual/` (wkhtmltoimage; its WebKit lacks CSS grid, so base.html
+gained a dev-only `?shot=1` shim that collapses the app grid for capture —
+never linked from the UI). Backfill chapters for W2 screens due by W3 close.

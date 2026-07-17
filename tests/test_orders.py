@@ -164,6 +164,19 @@ def test_store_events_and_cancel_audit():
     assert o3.cancel_reason == "rossz PD"
 
 
+def test_store_id_collision_fails_loud_not_merge():
+    # F-W3-02: the ids.py sequence race must surface as an error, never as
+    # two orders sharing one revision chain.
+    store = InMemoryOrderStore()
+    store.save(order(), actor="a", expect_new=True)
+    other = order(order_id="SZP-2607-0001")   # same id, fresh content
+    import dataclasses
+    other = dataclasses.replace(other, due_date="2026-07-25")
+    with pytest.raises(OrderError, match="already exists"):
+        store.save(other, actor="b", expect_new=True)
+    assert len(store._revs["SZP-2607-0001"]) == 1
+
+
 def test_store_refuses_cancel_without_reason_row():
     import dataclasses
     store = InMemoryOrderStore()

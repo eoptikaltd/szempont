@@ -10,6 +10,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin-tokens.css') }}">
   {# PROD: point the two lines above at the shared bucket instead, so every tool updates in lockstep:
      https://assets.atlas.eoptika.hu/admin-tokens.1.2.css  and  /fonts/... #}
+  {% if request.args.get('shot') %}
+  {# Manual-screenshot shim (R20): wkhtmltoimage's WebKit has no CSS grid —
+     ?shot=1 collapses the app grid and hides the rail so the CONTENT area
+     renders. Dev/manual tooling only; never linked from the UI. #}
+  <style>.app{display:block}.sidebar{display:none}.topbar{position:static}</style>
+  {% endif %}
 </head>
 <body>
 {% include '_sprite.html' %}

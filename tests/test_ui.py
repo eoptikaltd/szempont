@@ -368,6 +368,12 @@ def test_order_promotion_registered_on_first_sale_only():
         {"HOY-NLX-160-HMC-70", "HOY-NLX-150-HMC-70"}
 
 
+def test_order_create_rejects_unknown_discount():
+    # F-W3-02: unknown discount must 400, not silently price without it.
+    assert _create_order(discount="NOPE").status_code == 400
+    assert _create_order(discount="TORZS10").status_code == 302
+
+
 def test_megrendelesek_nav_item_is_live():
     b = c().get("/").data.decode()
     assert 'href="/megrendelesek"' in b

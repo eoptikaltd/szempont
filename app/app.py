@@ -779,11 +779,14 @@ def megrendeles_uj():
                                      person, today.isoformat())
         if discount_id:
             cfg = get_discount_config(discount_id)
-            if cfg is not None:
-                record = apply_discount(
-                    record, cfg,
-                    approved_by=(current_operator()
-                                 if cfg.requires_approval else None))
+            if cfg is None:
+                # F-W3-02: an unknown discount must fail the order, not
+                # silently price without it.
+                return f"ismeretlen kedvezmény: {discount_id}", 400
+            record = apply_discount(
+                record, cfg,
+                approved_by=(current_operator()
+                             if cfg.requires_approval else None))
         import uuid
         import dataclasses as _dc
         record = _dc.replace(record, quote_id=uuid.uuid4().hex)
@@ -797,7 +800,7 @@ def megrendeles_uj():
         saved = QUOTE_STORE.save(quote_transition(record, QuoteStatus.SAVED))
         QUOTE_STORE.save(quote_transition(saved, QuoteStatus.CONVERTED,
                                           order_id=order_id))
-        ORDERS.save(order, actor=current_operator())
+        ORDERS.save(order, actor=current_operator(), expect_new=True)
         new_promos = register_first_sale(PROMOTIONS, order)
         if new_promos:
             ORDERS.add_event(

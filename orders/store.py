@@ -93,14 +93,17 @@ class InMemoryOrderStore:
 
     # ------------------------------------------------------------------ orders
     def save(self, order: OrderRecord, *, actor: str,
-             event_note: str = "") -> OrderRecord:
+             event_note: str = "", expect_new: bool = False) -> OrderRecord:
         validate_for_save(order)
         revs = self._revs.setdefault(order.order_id, [])
         prev = revs[-1] if revs else None
-        if prev is None:
-            # id uniqueness is the sequence-race backstop (orders/ids.py)
-            pass
-        elif _same_content(prev, order):
+        if expect_new and prev is not None:
+            # F-W3-02: the sequence-race backstop promised in orders/ids.py —
+            # a collided SZP- id must fail LOUD, never merge two orders into
+            # one revision chain.
+            raise OrderError(f"order id {order.order_id} already exists — "
+                             "sequence race, retry the save")
+        if prev is not None and _same_content(prev, order):
             return prev                              # unchanged -> no-op
         rev = dataclasses.replace(order, revision=len(revs),
                                   saved_at=self._now())
@@ -201,9 +204,12 @@ class BQOrderStore:  # pragma: no cover — exercised in staging against real BQ
         return [from_bq_row(dict(r)) for r in job.result()]
 
     def save(self, order: OrderRecord, *, actor: str,
-             event_note: str = "") -> OrderRecord:
+             event_note: str = "", expect_new: bool = False) -> OrderRecord:
         validate_for_save(order)
         prev = self.load(order.order_id)
+        if expect_new and prev is not None:
+            raise OrderError(f"order id {order.order_id} already exists — "
+                             "sequence race, retry the save (F-W3-02)")
         if prev is not None and _same_content(prev, order):
             return prev
         rev = dataclasses.replace(
