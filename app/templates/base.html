@@ -43,9 +43,12 @@
            href="{{ url_for('set_density') }}?d={{ d }}&next={{ request.path }}">{{ t(d|capitalize) }}</a>
         {% endfor %}
       </div>
-      <div class="profile-chip"><div class="avatar">{{ operator_initials }}</div>
-        <div class="who"><b>{{ operator_name }}</b><span>{{ operator_role }}</span></div>
-      </div>
+      <a class="profile-chip" href="{{ url_for('operator_picker', next=request.path) }}"
+         title="{{ t('Switch operator') }}">
+        <div class="avatar">{{ operator_initials }}</div>
+        <div class="who"><b>{{ operator_name }}</b>
+          <span>{{ operator_role }}{% if not operator_picked %} · {{ t('sign in') }}{% endif %}</span></div>
+      </a>
       {% endblock %}
     </header>
     <div class="content">{% block content %}{% endblock %}</div>

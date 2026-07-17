@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>Szempont gyorstalpaló — próbaüzem · eOptika</title>
+<style>
+  /* Szempont print — GYORSTALPALÓ (MVP próbaüzem, egy A4 a pult mellé).
+     Same print discipline as the cheat sheet: one typeface, black-on-white. */
+  @page { size: A4; margin: 12mm 14mm; }
+  :root { --ink:#1A1A1A; --line:#333; --hair:#aaa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 10pt/1.4 "DM Sans","Segoe UI",Arial,sans-serif; color:var(--ink); }
+  .band { display:flex; align-items:baseline; gap:10pt; border-bottom:3pt solid var(--ink); padding-bottom:6pt; }
+  .band .title { font-size:16pt; font-weight:800; }
+  .band .sub { margin-left:auto; font-size:8.5pt; color:#333; text-align:right; }
+  .proba { margin:7pt 0; border:1.5pt solid var(--ink); padding:4pt 10pt;
+           font-size:9.5pt; font-weight:700; text-align:center; }
+  ol.steps { margin:8pt 0 0; padding:0; counter-reset: s; list-style:none;
+             column-count:2; column-gap:9mm; }
+  ol.steps li { break-inside:avoid; margin:0 0 7pt; padding-left:22pt; position:relative; }
+  ol.steps li::before { counter-increment:s; content:counter(s);
+    position:absolute; left:0; top:0; width:15pt; height:15pt;
+    border:1.5pt solid var(--ink); border-radius:50%; font-weight:800;
+    font-size:9pt; display:flex; align-items:center; justify-content:center; }
+  ol.steps b.h { display:block; font-size:10.5pt; }
+  .kbd { font: 8.5pt ui-monospace,Consolas,monospace; border:.5pt solid var(--hair);
+         padding:0 3pt; border-radius:2pt; white-space:nowrap; }
+  .foot { margin-top:8pt; border-top:1.2pt solid var(--line); padding-top:5pt;
+          font-size:9pt; }
+  .foot b { font-weight:800; }
+  @media screen { body{background:#e8e8e8}
+    .sheet{width:210mm;min-height:297mm;margin:8mm auto;background:#fff;padding:12mm 14mm;box-shadow:0 2px 14px rgba(0,0,0,.18)} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="band">
+    <div class="title">Szempont gyorstalpaló — a próbakör egy oldalon</div>
+    <div class="sub">eOptika Teréz krt 50 · 2026. 07. 18. · v1</div>
+  </div>
+
+  <div class="proba">PRÓBAÜZEM — kattints bátran: számla NEM készül, e-mail NEM megy ki, az ERP-be semmi nem íródik.</div>
+
+  <ol class="steps">
+    <li><b class="h">Jelentkezz be a neveddel</b>
+      Jobb felső sarokban a név → válaszd ki magad → <span class="kbd">Bejelentkezés</span>.
+      PIN még nincs, de a neved minden műveletre rákerül.</li>
+    <li><b class="h">Ügyfél</b>
+      Bal menü <span class="kbd">Ügyfelek</span> → keresés név/telefon/e-mail →
+      <span class="kbd">Kiválasztás</span>. Nincs találat? Lent
+      <span class="kbd">Betérő rögzítése (Z1)</span>.</li>
+    <li><b class="h">Lencse</b>
+      <span class="kbd">Lencsekereső</span>: recept beírása (OD/OS) →
+      <span class="kbd">Lencsék keresése</span> → a párnál
+      <span class="kbd">Ajánlat</span>. Ügyféllel közösen:
+      <span class="kbd">Konzultáció</span>.</li>
+    <li><b class="h">Ajánlat</b>
+      Keret hozzáadása a Keret kártyán; kedvezmény — engedélykötelesnél
+      jóváhagyó vezető kiválasztása; munkadíj automatikus.</li>
+    <li><b class="h">Megrendelés</b>
+      Jobb oldalt <span class="kbd">Megrendelés</span> kártya →
+      Rendelésből / Készletről → határidő →
+      <span class="kbd">Megrendelés létrehozása</span>. SZP-szám születik.</li>
+    <li><b class="h">Előleg + munkalap</b>
+      Adatlapon <span class="kbd">Előleg rögzítése</span> (összeg + mód) →
+      <span class="kbd">Fizetési összesítő</span> (NEM számla!) az ügyfélnek →
+      <span class="kbd">Munkalap</span> nyomtatás/PDF a műhelynek.</li>
+    <li><b class="h">Státuszok</b>
+      <span class="kbd">Műveletek</span> kártya: → Megrendelve → Beérkezett →
+      Csiszolás → Kész → QC-kész. Készletes lencse: Felvett után rögtön
+      Beérkezett. Visszalépés nincs.</li>
+    <li><b class="h">Átadás</b>
+      <span class="kbd">Kezdőlap → Mai átvételek</span>: sárga
+      „értesítendő" → hívd az ügyfelet → <span class="kbd">Értesítve</span>.
+      Átvételkor az adatlapon <span class="kbd">→ Átadva</span>. Kész a kör. ✔</li>
+  </ol>
+
+  <div class="foot">
+    <b>Ha valami félremegy:</b> Lemondás az adatlapon (indoklás kötelező, bárki
+    lemondhat, naplózzuk) · Másolás = ugyanez új ajánlatként MAI árakon,
+    kedvezmény nélkül · Minden furcsaságot írj fel és
+    <b>szólj Sabie-nak</b> — a visszajelzésed alakítja a végleges rendszert.
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Munkatárs — MVP operator picker (R6-lite): dropdown of the R7
+   roster, no PIN yet (parked in auth/). The picked name lands on every
+   audit row, eseménynapló entry and munkalap. #}
+{% block content %}
+
+  <div class="card" style="max-width:520px">
+    <div class="card__header">
+      <div>
+        <h2 class="card__title">{{ t('Who is working at the terminal?') }}</h2>
+        <p class="card__subtitle">{{ t('Your name goes on every order, discount and munkalap you touch.') }}</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('operator_select') }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label class="field"><span class="label">{{ t('Staff member') }}</span>
+        <select class="select" name="operator" aria-label="{{ t('Staff member') }}">
+          {% for m in members %}
+          <option value="{{ m.operator_id }}" {{ 'selected' if m.operator_id == current }}>
+            {{ m.display_name }} · {{ m.roles|join(', ') }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="toolbar">
+        <button class="btn btn--primary" type="submit">{{ t('Sign in') }}</button>
+      </div>
+    </form>
+    {% if current %}
+    <form method="post" action="{{ url_for('operator_logout') }}">
+      <div class="toolbar">
+        <button class="btn btn--ghost btn--sm" type="submit">{{ t('Sign out (back to shared terminal)') }}</button>
+      </div>
+    </form>
+    {% endif %}
+    <p class="hint">{{ t('PIN confirmation arrives with the next wave — until then picking your name is on your honour, and everything is logged.') }}</p>
+  </div>
+
+{% endblock %}

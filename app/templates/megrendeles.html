@@ -99,6 +99,9 @@
           <a class="btn btn--ghost" href="{{ o.munkalap_url }}" target="_blank">{{ t('Munkalap (print)') }}</a>
           <a class="btn btn--ghost" href="{{ url_for('print_fizetesi_osszesito', order=o.row.order_id) }}" target="_blank">{{ t('Payment summary (NOT an invoice)') }}</a>
         </div>
+        <div class="toolbar">
+          <a class="btn btn--soft" href="{{ o.copy_url }}">{{ t('Copy (new quote at current prices)') }}</a>
+        </div>
         <form method="post" action="{{ url_for('megrendeles_munkalap_pdf', order_id=o.row.order_id) }}">
           <input type="hidden" name="ftok" value="{{ ftok }}">
           <div class="toolbar">

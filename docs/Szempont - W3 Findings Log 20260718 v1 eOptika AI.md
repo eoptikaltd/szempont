@@ -164,3 +164,21 @@ Manual increment (R20): three W3-1 chapters + screenshots landed in
 `docs/manual/` (wkhtmltoimage; its WebKit lacks CSS grid, so base.html
 gained a dev-only `?shot=1` shim that collapses the app grid for capture —
 never linked from the UI). Backfill chapters for W2 screens due by W3 close.
+
+---
+
+## F-W3-03 — MVP-1 + MVP-2 mini-review (override build)
+
+| # | Seam | Finding | Resolution |
+|---|---|---|---|
+| a | Operator identity strength | Dropdown picker without PIN = honesty-based attribution (explicit override decision). Session cookie signed; SameSite=Lax default; open-redirect on `next` guarded (tested); unknown/inactive members rejected. | **As ruled.** PIN + IAP-JWT enforcement parked in `auth/` (unit-tested), re-wire is a small diff post-triage. |
+| b | Gated approval without PIN | Approver is a dropdown claim; one-time approval refs still thread quote→order, still exactly ONE audit event, marker `m5_approver_no_pin` distinguishes the era from both `auto_approved_pre_m5` (dead) and future PIN'd events. | **As ruled**; tested incl. non-approver rejection. |
+| c | Deposit validation | Over-total, non-positive, junk amount, unknown method all 400; deposit editable until terminal status; NEM SZÁMLA sheet carries a no-legal-effect clause and the remaining amount from the A1-allocated gross. | **No defect** (tests). |
+| d | PDF generation | wkhtmltopdf subprocess: fixed arg list, temp html cleaned in `finally`, 60 s timeout, binary-missing degrades to an eseménynapló note. Local path under `var/` (gitignored after MVP-1 accidentally committed one PDF — removed). GCS branch env-gated, unexercised locally. | **Fixed in MVP-2** (gitignore); GCS path goes on the staging checklist. |
+| e | Kezdőlap queue flags | 'értesítendő' derives from note events containing "értesítve" — a hand-written note with that word would also clear the flag. | **Accepted at MVP scope** (single marked button writes the note); revisit with M9-lite. |
+| f | Copy semantics (R15) | Copy rebuilds from lens/option/frame SKUs at TODAY's catalog; discount deliberately dropped (fresh approval); works from terminal orders too. Removed lines stay removed (not copied). | **As designed**, tested. |
+
+Deploy checklist additions (accumulating for the staging step): wkhtmltopdf
+in the app image; `SZEMPONT_SECRET_KEY` secret; DDL 003+004 rerun (orders
+gained sync_status/deposit; staff table + seed); `var/` volume or
+SZEMPONT_DOCS_BUCKET for munkalap PDFs.

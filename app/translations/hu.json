@@ -109,5 +109,15 @@
   "Method": "Mód",
   "Record deposit": "Előleg rögzítése",
   "Approver — gated discounts only (Üzletvezető / Cégvezető)": "Jóváhagyó — csak engedélyköteles kedvezményhez (Üzletvezető / Cégvezető)",
-  "Approver": "Jóváhagyó"
+  "Approver": "Jóváhagyó",
+
+  "Who is working at the terminal?": "Ki dolgozik a terminálnál?",
+  "Your name goes on every order, discount and munkalap you touch.": "A neved rákerül minden megrendelésre, kedvezményre és munkalapra, amihez nyúlsz.",
+  "Staff member": "Munkatárs",
+  "Sign in": "Bejelentkezés",
+  "Sign out (back to shared terminal)": "Kijelentkezés (vissza a közös terminálra)",
+  "PIN confirmation arrives with the next wave — until then picking your name is on your honour, and everything is logged.": "A PIN-megerősítés a következő hullámban érkezik — addig a névválasztás becsületalapú, és minden naplózva van.",
+  "Switch operator": "Munkatárs váltása",
+  "sign in": "jelentkezz be",
+  "Copy (new quote at current prices)": "Másolás (új ajánlat mai árakon)"
 }

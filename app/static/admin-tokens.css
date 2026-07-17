@@ -367,3 +367,12 @@ a{color:inherit;text-decoration:none}
 
 @media(max-width:1024px){.cols-main,.cols-3{grid-template-columns:1fr}}
 @media(max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---- R21 cosmetics (2026-07-18) ------------------------------------------ */
+/* W3-badged cards render visibly disabled, not just with dead inputs. */
+.card--disabled{opacity:.55}
+.card--disabled .input,.card--disabled .btn{pointer-events:none}
+/* Profile chip is a link since the operator picker; keep it chip-looking
+   and stop the name/role pair wrapping under the avatar. */
+a.profile-chip{text-decoration:none;color:inherit}
+.profile-chip .who b,.profile-chip .who span{white-space:nowrap}

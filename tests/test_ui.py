@@ -477,6 +477,57 @@ def test_order_create_rejects_unknown_discount():
     assert _create_order(discount="TORZS10").status_code == 302
 
 
+# ------------------------------------------------------------------- MVP-2
+def test_operator_picker_sets_session_actor():
+    from app.app import ORDERS
+    client = app.test_client()
+    body = client.get("/operator").data.decode()
+    assert "Bozó Klaudia" in body and "Valner Szabolcs" in body
+    r = client.post("/operator/valaszt",
+                    data={"operator": "varga.orsolya", "next": "/"})
+    assert r.status_code == 302 and r.headers["Location"] == "/"
+    # the picked name lands on order events
+    loc = client.post("/megrendeles/uj", data={
+        "sku_r": "HOY-NLX-160-HMC-70", "lens_source": "rendeles",
+        "due": "2099-01-10"}).headers["Location"]
+    oid = loc.rsplit("/", 1)[-1]
+    assert ORDERS.events(oid)[0].actor == "varga.orsolya"
+    # open-redirect guard + unknown member + logout
+    evil = client.post("/operator/valaszt", data={
+        "operator": "varga.orsolya", "next": "https://evil.example"})
+    assert evil.headers["Location"] == "/"
+    unk = client.post("/operator/valaszt", data={"operator": "senki.sincs"})
+    assert "/operator" in unk.headers["Location"]
+    client.post("/operator/kilep")
+    b = client.get("/").data.decode()
+    assert "Valner Szabolcs" in b            # env fallback operator again
+
+
+def test_order_copy_link_reprices_at_current_catalog():
+    b = _create_order().headers["Location"]
+    oid = b.rsplit("/", 1)[-1]
+    detail = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "Másolás (új ajánlat mai árakon)" in detail
+    import re
+    m = re.search(r'href="(/quote\?[^"]*)"[^>]*>Másolás', detail)
+    copy_url = m.group(1).replace("&amp;", "&")
+    assert "sku_r=HOY-NLX-160-HMC-70" in copy_url
+    assert "frame=FRM-RB-5228" in copy_url and "person=P-1001" in copy_url
+    assert "discount" not in copy_url        # fresh approval required
+    page = c().get(copy_url)
+    assert page.status_code == 200
+    body = page.data.decode()
+    assert "Megrendelés létrehozása" in body  # a full new quote page
+
+
+def test_r21_disabled_card_and_chip_css_present():
+    css = open("app/static/admin-tokens.css", encoding="utf-8").read()
+    assert ".card--disabled" in css and "a.profile-chip" in css
+    home = c().get("/").data.decode()
+    assert "card card--disabled" in home      # készlet W3 card
+    assert 'class="profile-chip" href="/operator' in home
+
+
 def test_megrendelesek_nav_item_is_live():
     b = c().get("/").data.decode()
     assert 'href="/megrendelesek"' in b

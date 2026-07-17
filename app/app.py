@@ -821,6 +821,40 @@ def konzultacio():
                            swatch_rows=swatch_rows, kurl=kurl)
 
 
+# ------------------------------------------- M5-lite operator picker (MVP-2)
+@app.route("/operator")
+def operator_picker():
+    """R6 in its MVP form: who is acting at the shared terminal — a
+    dropdown of the R7 roster. PIN proof is parked in auth/ and returns
+    with the post-MVP wave; every action is already audited with the
+    picked name."""
+    return render_template(
+        "operator.html", page_title="Munkatárs",
+        members=sorted(STAFF.active_members(), key=lambda m: m.display_name),
+        current=session.get("operator"),
+        next_url=(request.args.get("next")
+                  if (request.args.get("next") or "").startswith("/") else "/"))
+
+
+@app.route("/operator/valaszt", methods=["POST"])
+def operator_select():
+    op = request.form.get("operator", "").strip()
+    nxt = request.form.get("next") or "/"
+    if not nxt.startswith("/"):
+        nxt = "/"                                 # open-redirect guard
+    member = STAFF.get(op)
+    if member is None or not member.active:
+        return redirect(url_for("operator_picker"))
+    session["operator"] = op
+    return redirect(nxt)
+
+
+@app.route("/operator/kilep", methods=["POST"])
+def operator_logout():
+    session.pop("operator", None)
+    return redirect(url_for("operator_picker"))
+
+
 # --------------------------------------------------------- M4 orders (W3-1)
 _STATUS_TONE = {
     OrderStatus.FELVETT: "info", OrderStatus.MEGRENDELVE: "progress",
@@ -1011,6 +1045,19 @@ def megrendeles(order_id):
         "deposit_method_hu": DEPOSIT_HU.get(o.deposit_method or "", ""),
         "remaining": huf(t_.total_retail_gross - o.deposit_gross),
         "munkalap_pdf": o.munkalap_gcs_uri,
+        # R15 Másolás: ALL order types (terminal ones too) — opens a fresh
+        # quote with the same configuration REPRICED at today's catalog.
+        # Discounts are never copied (fresh approval needed).
+        "copy_url": url_for(
+            "quote",
+            sku_r=(lens[0].sku if lens else None),
+            sku_l=(lens[1].sku if len(lens) > 1
+                   else (lens[0].sku if lens else None)),
+            opt=sorted({l.sku for l in o.lines
+                        if l.line_type == "option" and l.sku
+                        and not l.removed}),
+            frame=(frame_line.sku if frame_line else None),
+            person=o.person_id or None),
     }
     events = [{"occurred_at": e.occurred_at.replace("T", " ")[:16],
                "actor": operator_display(e.actor),
