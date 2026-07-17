@@ -106,10 +106,18 @@ class OrderRecord:
     discount_net: Decimal = _ZERO
     discount_config_id: str | None = None
     discount_approved_by: str | None = None
-    legacy_order_id: str | None = None   # R18: migrated ClearVisio SO- id
+    legacy_order_id: str | None = None   # stays in schema per R32 (no importer)
     channel: str = "store-terez50"
-    munkalap_gcs_uri: str | None = None  # R11 (W3-3)
-    tharanis_sorszam: str | None = None  # set only by a verified live write
+    munkalap_gcs_uri: str | None = None  # R11: gs:// or local path of the PDF
+    # MVP override 2026-07-18: the Tharanis push is a queued-outbox seam —
+    # every order is born sync_status='pending'; NOTHING sends. A later,
+    # verified integration (R1) flips rows to 'synced' and fills
+    # tharanis_sorszam. No SOAP call exists in the app.
+    sync_status: str = "pending"         # pending|synced|failed
+    tharanis_sorszam: str | None = None
+    # MVP: deposit as simple fields; real invoicing (M8) deferred.
+    deposit_gross: Decimal = _ZERO
+    deposit_method: str | None = None    # keszpenz|kartya|utalas
     cancel_reason: str | None = None
     revision: int = 0
     saved_at: str = ""
@@ -186,6 +194,27 @@ def allowed_next(order: OrderRecord) -> tuple[OrderStatus, ...]:
     return tuple(sorted(_TRANSITIONS[order.status], key=list(OrderStatus).index))
 
 
+DEPOSIT_METHODS = ("keszpenz", "kartya", "utalas")
+
+
+def record_deposit(order: OrderRecord, *, gross: Decimal,
+                   method: str) -> OrderRecord:
+    """MVP deposit: amount + method on the order, nothing else. Replaces
+    any prior deposit (one deposit per order at rehearsal scope); the
+    fizetési összesítő print shows it, invoicing (M8) is deferred."""
+    if order.status in TERMINAL:
+        raise OrderError(f"order {order.order_id} is {order.status} — "
+                         "no deposit changes")
+    if method not in DEPOSIT_METHODS:
+        raise OrderError(f"unknown deposit method {method!r}")
+    if gross <= 0:
+        raise OrderError("deposit must be positive")
+    if gross > order_totals(order).total_retail_gross:
+        raise OrderError("deposit exceeds the order total")
+    return dataclasses.replace(order, deposit_gross=gross,
+                               deposit_method=method)
+
+
 # --------------------------------------------------------------- BQ (de)serde
 def to_bq_row(order: OrderRecord) -> dict:
     """JSON-load-ready row for szempont.orders (DDL 003; NUMERIC as strings)."""
@@ -220,7 +249,10 @@ def to_bq_row(order: OrderRecord) -> dict:
         "due_date": order.due_date,
         "channel": order.channel,
         "munkalap_gcs_uri": order.munkalap_gcs_uri,
+        "sync_status": order.sync_status,
         "tharanis_sorszam": order.tharanis_sorszam,
+        "deposit_gross": str(order.deposit_gross),
+        "deposit_method": order.deposit_method,
         "cancel_reason": order.cancel_reason,
         "revision": order.revision,
         "saved_at": order.saved_at or None,
@@ -261,7 +293,10 @@ def from_bq_row(row: dict) -> OrderRecord:
         legacy_order_id=row.get("legacy_order_id"),
         channel=row.get("channel") or "store-terez50",
         munkalap_gcs_uri=row.get("munkalap_gcs_uri"),
+        sync_status=row.get("sync_status") or "pending",
         tharanis_sorszam=row.get("tharanis_sorszam"),
+        deposit_gross=Decimal(str(row.get("deposit_gross") or "0")),
+        deposit_method=row.get("deposit_method"),
         cancel_reason=row.get("cancel_reason"),
         revision=int(row.get("revision") or 0),
         saved_at=str(row.get("saved_at") or ""),

@@ -9,6 +9,7 @@ COPY pricing/ pricing/
 COPY ingest/ ingest/
 COPY quotes/ quotes/
 COPY orders/ orders/
+COPY auth/ auth/
 COPY vendors/ vendors/
 COPY iris/ iris/
 COPY app/ app/

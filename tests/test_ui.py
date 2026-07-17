@@ -66,8 +66,10 @@ def test_quote_curated_discount_applied_and_gated():
     b = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=TORZS10").data.decode()
     assert "Törzsvásárlói 10%" in b
     assert "4 050 Ft" in b and "46 292 Ft" in b
+    # M5/MVP: a bare gated-discount URL does NOT price in — approval needed
     gated = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=DOLG25").data.decode()
-    assert "Jóváhagyta" in gated             # approval noted on-page (M5: real gate)
+    assert "jóváhagyás szükséges" in gated
+    assert "Jóváhagyta" not in gated
     unknown = c().get("/quote?sku=HOY-NLX-160-HMC-70&discount=NOPE").data.decode()
     assert "ismeretlen kedvezmény" in unknown
 
@@ -114,9 +116,12 @@ def test_gated_discount_double_post_emits_one_audit_event():
     from app.app import AUDIT_EVENTS
     AUDIT_EVENTS.clear()
     tok = _ftok("/quote?sku=HOY-NLX-160-HMC-70")
-    data = {"ftok": tok, "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25"}
-    assert c().post("/quote/discount", data=data).status_code == 302
-    assert c().post("/quote/discount", data=data).status_code == 302
+    data = {"ftok": tok, "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25",
+            "approver": "bozo.klaudia"}
+    r1 = c().post("/quote/discount", data=data)
+    r2 = c().post("/quote/discount", data=data)
+    assert r1.status_code == 302 and r2.status_code == 302
+    assert r1.headers["Location"] == r2.headers["Location"]  # same appr ref
     assert len(AUDIT_EVENTS) == 1
 
 
@@ -333,25 +338,123 @@ def test_order_list_quick_filters_and_period():
     assert c().get("/megrendelesek?szuro=nonsense&napok=zzz").status_code == 200
 
 
-def test_order_tharanis_dry_run_writes_event_never_sends():
-    import app.app as A
-    from vendors.tharanis import TharanisOrderSink
+def test_order_outbox_seam_no_tharanis_surface():
+    # MVP override: orders queue as sync_status='pending'; no send route.
+    from app.app import ORDERS
     oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
-    old = A.THARANIS
-    try:
-        A.THARANIS = TharanisOrderSink(mode="dry_run")
-        assert c().post(f"/megrendeles/{oid}/tharanis").status_code == 302
-    finally:
-        A.THARANIS = old
+    assert ORDERS.load(oid).sync_status == "pending"
     b = c().get(f"/megrendeles/{oid}").data.decode()
-    assert "dry-run" in b and "berak" in b
-    assert "&lt;berak&gt;" in b                  # XML escaped into the page
-    ev = [e for e in A.ORDERS.events(oid) if e.event_type == "tharanis_dry_run"]
-    assert len(ev) == 1 and "<berak>" in ev[0].payload
-    # default sink (off) records the refusal as a note event
-    assert c().post(f"/megrendeles/{oid}/tharanis").status_code == 302
-    notes = [e for e in A.ORDERS.events(oid) if e.event_type == "note"]
-    assert any("elutasítva" in e.note for e in notes)
+    assert "függőben" in b and "semmit nem küldünk" in b
+    assert c().post(f"/megrendeles/{oid}/tharanis").status_code == 404
+
+
+def test_order_deposit_and_payment_summary_not_invoice():
+    from app.app import ORDERS
+    oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    # validation: bad method / over total / junk amount
+    assert c().post(f"/megrendeles/{oid}/eloleg",
+                    data={"amount": "20000", "method": "bitcoin"})\
+        .status_code == 400
+    assert c().post(f"/megrendeles/{oid}/eloleg",
+                    data={"amount": "9999999", "method": "keszpenz"})\
+        .status_code == 400
+    assert c().post(f"/megrendeles/{oid}/eloleg",
+                    data={"amount": "húszezer", "method": "keszpenz"})\
+        .status_code == 400
+    assert c().post(f"/megrendeles/{oid}/eloleg",
+                    data={"amount": "20000", "method": "keszpenz"})\
+        .status_code == 302
+    o = ORDERS.load(oid)
+    assert str(o.deposit_gross) == "20000" and o.deposit_method == "keszpenz"
+    detail = c().get(f"/megrendeles/{oid}").data.decode()
+    assert "Előleg rögzítve" in detail          # eseménynapló row
+    summary = c().get(f"/print/fizetesi-osszesito?order={oid}").data.decode()
+    assert "NEM SZÁMLA" in summary
+    assert "Fizetendő átvételkor" in summary
+    # 93 980 gross - 20 000 deposit = 73 980 remaining
+    assert "73 980 Ft" in summary
+    assert c().get("/print/fizetesi-osszesito?order=SZP-0000-0000")\
+        .status_code == 404
+
+
+def test_order_munkalap_pdf_generated_and_served():
+    import shutil
+    if shutil.which("wkhtmltopdf") is None:
+        import pytest
+        pytest.skip("wkhtmltopdf not installed")
+    import os as _os
+    import tempfile
+    from app.app import ORDERS
+    oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    with tempfile.TemporaryDirectory() as tmp:
+        _os.environ["SZEMPONT_DOCS_DIR"] = tmp
+        try:
+            assert c().post(f"/megrendeles/{oid}/munkalap-pdf")\
+                .status_code == 302
+        finally:
+            _os.environ.pop("SZEMPONT_DOCS_DIR", None)
+        o = ORDERS.load(oid)
+        assert o.munkalap_gcs_uri and o.munkalap_gcs_uri.endswith(
+            f"{oid}.pdf")
+        assert "/munkalap/" in o.munkalap_gcs_uri   # R11 path shape
+        pdf = c().get(f"/megrendeles/{oid}/munkalap.pdf")
+        assert pdf.status_code == 200
+        assert pdf.data[:5] == b"%PDF-"
+
+
+def test_kezdolap_queues_pickups_and_unsigned_walkins():
+    from app.app import ORDERS, WALKINS
+    from iris import new_walkin
+    ORDERS._revs.clear(); ORDERS._events.clear()
+    oid = _create_order().headers["Location"].rsplit("/", 1)[-1]
+    c().post(f"/megrendeles/{oid}/status", data={"target": "megrendelve"})
+    c().post(f"/megrendeles/{oid}/status", data={"target": "beerkezett"})
+    c().post(f"/megrendeles/{oid}/status", data={"target": "kesz"})
+    WALKINS.save(new_walkin(display_name="Aláíratlan Aladár",
+                            created_by="t", token_fn=lambda: "Z1-nosig",
+                            now_fn=lambda: "2026-07-18T09:00:00"))
+    home = c().get("/").data.decode()
+    assert oid in home and "értesítendő" in home
+    assert "Aláíratlan Aladár" in home and "GDPR hiányzik" in home
+    # mark notified -> flag flips, event logged
+    assert c().post(f"/megrendeles/{oid}/ertesitve",
+                    data={"next": "/"}).status_code == 302
+    home2 = c().get("/").data.decode()
+    assert "értesítve" in home2
+    assert any("értesítve" in e.note.lower()
+               for e in ORDERS.events(oid) if e.event_type == "note")
+    # átadva closes the loop and clears the queue
+    c().post(f"/megrendeles/{oid}/status", data={"target": "atadva"})
+    home3 = c().get("/").data.decode()
+    assert oid not in home3
+
+
+def test_order_create_with_gated_discount_requires_approval_ref():
+    # no approval ref -> 400; with the ref from the audited POST -> applied
+    r = _create_order(discount="DOLG25")
+    assert r.status_code == 400
+    tok = _ftok("/quote?sku=HOY-NLX-160-HMC-70")
+    loc = c().post("/quote/discount", data={
+        "ftok": tok, "sku_r": "HOY-NLX-160-HMC-70",
+        "sku_l": "HOY-NLX-150-HMC-70", "frame": "FRM-RB-5228",
+        "discount": "DOLG25", "approver": "bozo.klaudia"},
+    ).headers["Location"]
+    import re
+    appr = re.search(r"appr=([0-9a-f]+)", loc).group(1)
+    ok = _create_order(discount="DOLG25", appr=appr)
+    assert ok.status_code == 302
+    from app.app import ORDERS
+    oid = ok.headers["Location"].rsplit("/", 1)[-1]
+    o = ORDERS.load(oid)
+    assert o.discount_config_id == "DOLG25"
+    assert o.discount_approved_by == "bozo.klaudia"
+    # non-approver rejected on the POST path (no audit, error code back)
+    tok2 = _ftok("/quote?sku=HOY-NLX-160-HMC-70")
+    loc2 = c().post("/quote/discount", data={
+        "ftok": tok2, "sku_r": "HOY-NLX-160-HMC-70",
+        "discount": "DOLG25", "approver": "varga.orsolya"},
+    ).headers["Location"]
+    assert "appr_err=szerep" in loc2
 
 
 def test_order_promotion_registered_on_first_sale_only():
@@ -380,25 +483,39 @@ def test_megrendelesek_nav_item_is_live():
     assert b.count('aria-disabled="true"') == 4  # W3 badge came off one item
 
 
-def test_auto_approved_gated_discount_audited_on_apply_never_on_render():
-    # Review rulings (2026-07-16): pre-M5 auto-approvals audited with marker,
-    # exactly ONE event per applied discount — POST/apply path only, GET
-    # renders never write audit.
-    from app.app import AUDIT_EVENTS, current_operator
+def test_gated_discount_approver_audited_on_apply_never_on_render():
+    # M5/MVP: a named approver (Üzletvezető/Cégvezető) authorizes the gated
+    # discount; exactly ONE audit event, on the POST path only. The old
+    # auto_approved_pre_m5 shim is retired — its marker no longer appears.
+    from app.app import AUDIT_EVENTS
     AUDIT_EVENTS.clear()
-    r = c().post("/quote/discount", data={
+    # POST without an approver: no audit, error code redirected back
+    r0 = c().post("/quote/discount", data={
         "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25"})
+    assert r0.status_code == 302 and "appr_err=szerep" in r0.headers["Location"]
+    assert AUDIT_EVENTS == []
+    # POST with a proper approver: one event, actor = the approver
+    r = c().post("/quote/discount", data={
+        "sku_r": "HOY-NLX-160-HMC-70", "discount": "DOLG25",
+        "approver": "bozo.klaudia"})
     assert r.status_code == 302 and "discount=DOLG25" in r.headers["Location"]
+    assert "appr=" in r.headers["Location"]
     assert len(AUDIT_EVENTS) == 1
     ev = AUDIT_EVENTS[0]
     assert ev["event_type"] == "discount"
-    assert ev["actor"] == current_operator()   # no literal operator names
-    assert '"marker": "auto_approved_pre_m5"' in ev["payload"]
+    assert ev["actor"] == "bozo.klaudia"
+    assert '"marker": "m5_approver_no_pin"' in ev["payload"]
+    assert "auto_approved_pre_m5" not in ev["payload"]
     assert '"discount_config_id": "DOLG25"' in ev["payload"]
-    # repeated renders of the applied discount: still exactly one event
+    # repeated renders of the approved discount: no further events,
+    # approver named on the page
+    import re
+    appr = re.search(r"appr=([0-9a-f]+)", r.headers["Location"]).group(1)
     for _ in range(3):
-        assert c().get("/quote?sku=HOY-NLX-160-HMC-70"
-                       "&discount=DOLG25").status_code == 200
+        page = c().get("/quote?sku=HOY-NLX-160-HMC-70"
+                       f"&discount=DOLG25&appr={appr}")
+        assert page.status_code == 200
+    assert "Bozó Klaudia" in page.data.decode()
     assert len(AUDIT_EVENTS) == 1
     AUDIT_EVENTS.clear()
     c().post("/quote/discount", data={

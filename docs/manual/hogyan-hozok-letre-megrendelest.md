@@ -23,8 +23,9 @@ kiválasztva → Ajánlat oldal), lehetőleg kiválasztott ügyféllel.
 ## Mi történik ilyenkor?
 
 - A megrendelés **SZP-számot** kap (pl. `SZP-2607-0001`) — ez kerül a
-  munkalapra és később a számlára is. (A régi ClearVisio SO-számok csak az
-  áthozott megrendeléseken maradnak meg.)
+  munkalapra és később a számlára is. (A ClearVisio SO-számai a ClearVisióban
+  maradnak: az átállás után minden új megrendelés itt születik, a régieket
+  a ClearVisióban zárjuk le.)
 - Az ajánlat eltárolódik és **Átalakítva** állapotba kerül — később is
   visszakereshető, ugyanazokkal az árakkal.
 - A rendszer átirányít a megrendelés adatlapjára, ahol az eseménynaplóban

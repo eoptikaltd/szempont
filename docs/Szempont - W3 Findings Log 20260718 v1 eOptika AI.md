@@ -24,6 +24,28 @@ per-item mini-reviews append here. Tripwire stops are recorded inline.
   session-control vs IAP session length; JWT audience per the annex's
   direct-on-Cloud-Run format.
 
+## Ruling addendum 2 received 2026-07-18 (supersedes where in conflict)
+
+- **R31** Hard weekend flip: ClearVisio until Friday close, Szempont from
+  Monday open. Open ClearVisio orders are closed IN CLEARVISIO over the
+  following weeks; Szempont originates only new orders. NO operational-state
+  migration.
+- **R32** R18 VOID; M11 collapses to nothing-to-build. `legacy_order_id`
+  stays in schema (harmless), no importer exists or will.
+- **R33** ClearVisio retained post-cutover as read-only archive at Sabie's
+  discretion; apiV2 probe REMOVED from W4; ClearVisio API creds dropped
+  from R23 (leaving only the Szamlazz keys).
+- **R34** W5 = M12 reports + config, production infra (szem-pont.hu
+  LB/cert/IAP per R9/R9a, IAP group per R8), cutover checklist + go/no-go,
+  compiled manual. Nothing else.
+- **R35** First live Szempont invoice = cutover Monday (T−10 invoicing
+  superseded); live Szamlazz key installed + Tesztüzem→live verified over
+  the cutover weekend; Monday's first invoice stays the tripwire, fired on
+  a small controlled sale. *Consistency note (flagged back, accepted): R19's
+  parallel-run is thereby shadow/practice only — ClearVisio remains the
+  legal record until Friday close; R3c's 2026-09-01 receipt-reporting date
+  must be checked against the actual cutover Monday.*
+
 ---
 
 ## F-W3-01 — R1 verification: Tharanis connector order-create / article-create coverage
@@ -103,6 +125,23 @@ Secret Manager (`tharanis-ugyfelkod`, `tharanis-cegkod`, `tharanis-apikulcs`).
    commit only after this entry gains a "berak verified" follow-up.
 3. Batched external asks (for Sabie): Tharanis apiv3 API doc (berak sections
    for bejovo_megrendeles + cikk); write permission grants for both.
+
+## PRIORITY OVERRIDE received 2026-07-18 (Sabie) — resequence to store MVP
+
+All rulings stay valid; deferred items move later. New objective: fully
+self-contained store MVP for floor rehearsal, zero external writes/deps.
+Applied: Tharanis surface removed from the app — orders carry
+`sync_status='pending'` (queued outbox; `vendors/tharanis.py` + R1
+verification PARKED); munkalap PDF local/GCS-optional (R11 path shape);
+Kezdőlap queues live (Mai átvételek with értesítendő flag replacing
+M9-lite for now; Aláírásra váró = unsigned-GDPR walk-ins); deposit as
+amount+method + NEM SZÁMLA fizetési összesítő (M8 deferred); gated
+discounts approved by named approver WITHOUT PIN (marker
+`m5_approver_no_pin`; PIN+IAP infra parked in `auth/`, tests green).
+DEFERRED by the override: R1 SOAP verification follow-up, M8 sandbox, M10,
+M9-lite, per-line VAT (R2). HARD STOP after MVP-2 for floor-feedback
+triage. Deploy checklist additions: wkhtmltopdf in the app image;
+SZEMPONT_SECRET_KEY in Secret Manager (session cookie signing).
 
 ---
 

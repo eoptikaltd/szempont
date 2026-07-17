@@ -23,7 +23,8 @@ import json
 import glob
 from decimal import Decimal
 
-from flask import Flask, render_template, request, redirect, make_response, url_for
+from flask import (Flask, render_template, request, redirect, make_response,
+                   session, url_for)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pricing.engine import PricingError, price_quote            # noqa: E402
@@ -45,8 +46,11 @@ from orders.records import (STATUS_HU, OrderError, OrderStatus,  # noqa: E402
 from orders.store import InMemoryOrderStore                      # noqa: E402
 from orders.promotions import (InMemoryPromotionRegistry,        # noqa: E402
                                register_first_sale)
-from vendors.tharanis import (TharanisOrderSink,                 # noqa: E402
-                              TharanisWriteBlocked)
+# MVP override 2026-07-18: PIN + IAP-JWT enforcement are PARKED in auth/
+# (package + tests stay); the UI uses the roster read-only — operator
+# dropdown (MVP-2) and approver select on gated discounts.
+from auth.staff import InMemoryStaffStore                        # noqa: E402
+from auth.iap import IapError, iap_audience, verify_iap_jwt      # noqa: E402
 from vendors.unas_frames import DemoFrameSource, UnasFrameSource  # noqa: E402
 from iris import (FixturePersonDirectory, InMemoryWalkinStore,   # noqa: E402
                   attributed_person_id, is_z1, new_walkin)
@@ -56,16 +60,31 @@ APP_NAME = "Szempont"
 TOOL_ID = "szempont"
 HERE = os.path.dirname(__file__)
 
+# M5 session cookie signing. Dev: per-process random (session resets on
+# restart — fine). Staging/prod MUST set SZEMPONT_SECRET_KEY (Secret
+# Manager) or every deploy logs everyone out mid-day. Deploy checklist item.
+import secrets as _secrets                                        # noqa: E402
+app.secret_key = os.environ.get("SZEMPONT_SECRET_KEY") or _secrets.token_hex(32)
+
+
 def current_operator() -> str:
-    """Single source of the acting operator (review ruling 2026-07-16):
-    every actor field — audit events, quote created_by, walk-in created_by —
-    reads from here and nowhere else. Pre-M5 shim: fixed store operator from
-    env; M5 replaces the body with the authenticated session user."""
-    return os.environ.get("SZEMPONT_OPERATOR", "sabie.valner")
+    """Single source of the acting operator: the session operator picked at
+    the terminal (M5, R6). Fallback while nobody picked (fresh terminal,
+    non-browser client, tests, out-of-request callers): fixed store operator
+    from env. Every actor field — audit events, created_by, approvals —
+    reads from here."""
+    from flask import has_request_context
+    if has_request_context() and session.get("operator"):
+        return session["operator"]
+    return os.environ.get("SZEMPONT_OPERATOR", "valner.szabolcs")
 
 
 def operator_display(op: str) -> str:
-    """'sabie.valner' -> 'Sabie Valner' for chips and hints."""
+    """Display name from the staff roster (M5); derived fallback for ids
+    outside the roster ('sabie.valner' -> 'Sabie Valner')."""
+    name = STAFF.display_name(op)
+    if name:
+        return name
     return " ".join(p.capitalize() for p in op.replace(".", " ").split())
 
 
@@ -114,9 +133,12 @@ else:
     QUOTE_STORE = InMemoryQuoteStore()
     PROMOTIONS = InMemoryPromotionRegistry()
 
-# R1/F-W3-01: default off; dry_run renders the candidate berak XML onto the
-# eseménynapló; live is hard-blocked in the adapter (tripwire).
-THARANIS = TharanisOrderSink()
+# M5 staff roster (R7 seed). BQ store loads szempont.staff (DDL 004).
+if os.environ.get("SZEMPONT_STORES") == "bq":  # pragma: no cover
+    from auth.staff import BQStaffStore
+    STAFF = BQStaffStore(_sclient)
+else:
+    STAFF = InMemoryStaffStore()
 
 # Pre-M5 audit shim: events collected in-process; staging loads them to
 # szempont.audit_log (same row shape) through the BQ store path.
@@ -139,6 +161,21 @@ from urllib.parse import urlparse as _urlparse                   # noqa: E402
 _UNUSED = object()
 _FORM_TOKENS: "OrderedDict[str, object]" = OrderedDict()  # token -> _UNUSED | result
 _FORM_TOKEN_CAP = 1000
+
+
+@app.before_request
+def _iap_guard():
+    """R6: when an IAP audience is configured (staging/prod), EVERY request
+    must carry a verifiable x-goog-iap-jwt-assertion — the plain email
+    header is never trusted. Unset audience = dev/tests, guard off."""
+    aud = iap_audience()
+    if not aud:
+        return None
+    try:
+        verify_iap_jwt(request.headers.get("x-goog-iap-jwt-assertion"), aud)
+    except IapError as e:
+        return f"IAP-ellenőrzés sikertelen: {e}", 401
+    return None
 
 
 @app.before_request
@@ -174,6 +211,34 @@ def token_replay_result(tok: str | None) -> object:
 def token_mark_used(tok: str | None, result: object) -> None:
     if tok and _FORM_TOKENS.get(tok) is _UNUSED:
         _FORM_TOKENS[tok] = result
+
+
+# ---- M5 gated-discount approvals (W3-2, retires auto_approved_pre_m5) -------
+# A successful approver-PIN check mints a one-time approval reference that
+# rides the stateless quote URL (appr=...) into renders and order creation.
+# Server-side map only — the token itself carries nothing.
+_APPROVALS: "OrderedDict[str, tuple[str, str]]" = OrderedDict()
+_APPROVAL_CAP = 1000
+
+
+def issue_approval(discount_id: str, approver: str) -> str:
+    import uuid
+    tok = uuid.uuid4().hex
+    _APPROVALS[tok] = (discount_id, approver)
+    while len(_APPROVALS) > _APPROVAL_CAP:
+        _APPROVALS.popitem(last=False)
+    return tok
+
+
+def approval_for(tok: str | None, discount_id: str) -> str | None:
+    """The approver's operator_id if tok is a valid approval FOR THIS
+    discount config, else None."""
+    if not tok:
+        return None
+    entry = _APPROVALS.get(tok)
+    if entry and entry[0] == discount_id:
+        return entry[1]
+    return None
 
 with open(os.path.join(HERE, "nav.json"), encoding="utf-8") as fh:
     NAV = json.load(fh)
@@ -226,11 +291,15 @@ def inject_globals():
              or CATALOG_I18N.get("en", {}).get(key, key))
         return s.format(**kw) if kw else s
 
-    op = operator_display(current_operator())
+    op_id = current_operator()
+    op = operator_display(op_id)
+    member = STAFF.get(op_id)
     return dict(t=t, app_name=APP_NAME, lang=lang, languages=LANGUAGES,
                 density=_cookie("density", DENSITIES, "comfortable"),
                 nav=NAV, nav_active=TOOL_ID, tool_nav=TOOL_NAV, huf=huf,
                 operator_name=op,
+                operator_role=(member.roles[0] if member else "Munkatárs"),
+                operator_picked=bool(session.get("operator")),
                 operator_initials="".join(w[0] for w in op.split()[:2]).upper())
 
 
@@ -331,13 +400,35 @@ def ugyfel_walkin():
 @app.route("/")
 def kezdolap():
     """ClearVis-pattern landing (IA map row 1): ügyfélkeresés quick card
-    posting into /ugyfel, plus the W3 placeholders (készlet-ellenőrzés,
-    Aláírásra váró nyilatkozatok, Mai átvételek) rendered disabled."""
+    posting into /ugyfel + the two LIVE queues (MVP override 2026-07-18):
+    Mai átvételek (kiadható orders, with the értesítendő flag replacing
+    M9-lite email for now) and Aláírásra váró nyilatkozatok (walk-ins
+    without a signed GDPR declaration). Készlet-ellenőrzés stays W3."""
     # Pre-shell links carried finder params on "/" — forward them, nothing
     # else on this route takes query params.
     if any(k in request.args for k in ("od_sph", "os_sph", "person", "opt")):
         return redirect(url_for("finder", **request.args.to_dict(flat=False)))
-    return render_template("kezdolap.html", page_title="Kezdőlap")
+    today = dt.date.today().isoformat()
+    pickups = []
+    for o in ORDERS.list_orders():
+        if o.status in (OrderStatus.KESZ, OrderStatus.QC_KESZ):
+            pv = _person_view(o.person_id or "")
+            pickups.append({
+                "order_id": o.order_id,
+                "person": pv["name"] if pv else "—",
+                "status_hu": STATUS_HU[o.status],
+                "due_date": o.due_date,
+                "late": o.due_date < today,
+                "notified": _order_notified(o.order_id),
+                "url": url_for("megrendeles", order_id=o.order_id),
+            })
+    pickups.sort(key=lambda r: r["due_date"])
+    unsigned = [{"name": w.display_name, "z1": w.z1_token,
+                 "created": w.created_at[:10]}
+                for w in WALKINS.unsigned()]
+    return render_template("kezdolap.html", page_title="Kezdőlap",
+                           pickups=pickups, unsigned=unsigned,
+                           ftok=issue_form_token())
 
 
 @app.route("/lencsekereso")
@@ -437,10 +528,13 @@ def _preview_record(sku_r: str, sku_l: str, options: frozenset[str],
 
 @app.route("/quote/discount", methods=["POST"])
 def quote_discount():
-    """D3 apply path (review ruling 2026-07-16): the POST applies the curated
-    discount and — for approval-gated configs — emits exactly ONE audit event
-    with the auto_approved_pre_m5 marker, then redirects (PRG) to the GET
-    view. Page renders never write audit."""
+    """D3 apply path. M5 (W3-2): gated configs need a REAL approval — an
+    Üzletvezető/Cégvezető picks themselves and enters their PIN (R7); the
+    POST emits exactly ONE audit event (marker=m5_pin, actor=approver) and
+    redirects with a one-time approval reference. The pre-M5
+    auto_approved_pre_m5 shim is retired — rows carrying that marker in
+    szempont.audit_log predate this commit (migration note, F-W3-03).
+    Page renders still never write audit."""
     f = request.form
     sku_r = f.get("sku_r", "")
     sku_l = f.get("sku_l") or sku_r
@@ -450,27 +544,42 @@ def quote_discount():
     discount_id = f.get("discount", "")
     today = dt.date.today().isoformat()
 
+    def back(appr: str | None = None, appr_err: str | None = None):
+        return redirect(url_for(
+            "quote", sku_r=sku_r, sku_l=sku_l, opt=sorted(options),
+            frame=frame_sku or None, person=person or None,
+            discount=discount_id or None, appr=appr, appr_err=appr_err))
+
     ftok = f.get("ftok")
     cfg = get_discount_config(discount_id) if discount_id else None
-    if (cfg is not None and cfg.requires_approval
-            and token_replay_result(ftok) is None):  # F-W2-07: no double audit
-        try:
-            *_, record = _preview_record(sku_r, sku_l, options, frame_sku,
-                                         person, today)
-            record = apply_discount(record, cfg,
-                                    approved_by=current_operator())
-            import uuid
-            _emit_audit(discount_audit_event(
-                record, uuid.uuid4().hex,
-                dt.datetime.now(dt.timezone.utc).isoformat(),
-                marker="auto_approved_pre_m5"))
-            token_mark_used(ftok, discount_id)
-        except (PricingError, QuoteError):
-            pass  # the GET view renders the error; nothing was approved
-    return redirect(url_for("quote", sku_r=sku_r, sku_l=sku_l,
-                            opt=sorted(options), frame=frame_sku or None,
-                            person=person or None,
-                            discount=discount_id or None))
+    if cfg is None or not cfg.requires_approval:
+        return back()
+
+    replay = token_replay_result(ftok)           # F-W2-07: no double audit
+    if replay is not None:
+        return back(appr=replay)
+
+    # MVP override: approver picks themselves from the dropdown; PIN proof
+    # is parked (auth/ package ready). Marker on the audit event says so.
+    approver = f.get("approver", "").strip()
+    member = STAFF.get(approver)
+    if member is None or not member.is_approver or not member.active:
+        return back(appr_err="szerep")
+
+    try:
+        *_, record = _preview_record(sku_r, sku_l, options, frame_sku,
+                                     person, today)
+        record = apply_discount(record, cfg, approved_by=approver)
+    except (PricingError, QuoteError):
+        return back()      # the GET view renders the config error
+    appr = issue_approval(discount_id, approver)
+    import uuid
+    _emit_audit(discount_audit_event(
+        record, uuid.uuid4().hex,
+        dt.datetime.now(dt.timezone.utc).isoformat(),
+        marker="m5_approver_no_pin"))     # PIN parked by the MVP override
+    token_mark_used(ftok, appr)
+    return back(appr=appr)
 
 
 @app.route("/quote")
@@ -500,26 +609,45 @@ def quote():
     lens_r, lens_l = snap.lenses[sku_r], snap.lenses[sku_l]
 
     discount_id = request.args.get("discount", "")
+    appr = request.args.get("appr", "")
     discount_error = None
     applied_config = None
     if discount_id:
         cfg = get_discount_config(discount_id)
         if cfg is None:
             discount_error = f"ismeretlen kedvezmény: {discount_id}"
+        elif cfg.requires_approval:
+            # M5: gated discounts price in ONLY with a live approval ref —
+            # a bare ?discount=DOLG25 URL no longer applies it.
+            approver = approval_for(appr, discount_id)
+            if approver is None:
+                discount_error = ("jóváhagyás szükséges — Üzletvezető vagy "
+                                  "Cégvezető")
+            else:
+                try:
+                    record = apply_discount(record, cfg, approved_by=approver)
+                    applied_config = cfg
+                except QuoteError as e:
+                    discount_error = str(e)
         else:
             try:
-                record = apply_discount(
-                    record, cfg,
-                    approved_by=(current_operator()
-                                 if cfg.requires_approval else None))
+                record = apply_discount(record, cfg, approved_by=None)
                 applied_config = cfg
             except QuoteError as e:
                 discount_error = str(e)
+    appr_err = request.args.get("appr_err", "")
+    if appr_err and not discount_error:
+        discount_error = {
+            "szerep": "a jóváhagyó csak Üzletvezető vagy Cégvezető lehet",
+            "pin": "hibás PIN — a kedvezmény nem került jóváhagyásra",
+            "zarolva": "a PIN zárolva (túl sok hibás próbálkozás) — "
+                       "próbáld később",
+        }.get(appr_err, "jóváhagyási hiba")
 
     t_ = totals(record)
     base_params = {"sku_r": sku_r, "sku_l": sku_l, "opt": sorted(options),
                    "frame": frame_sku or None, "discount": discount_id or None,
-                   "person": person or None}
+                   "appr": appr or None, "person": person or None}
 
     frame_query = request.args.get("qf", "").strip()
     frame_hits = [{
@@ -555,6 +683,7 @@ def quote():
         applied_config=applied_config, discount_error=discount_error,
         approved_by_display=(operator_display(record.discount_approved_by)
                              if record.discount_approved_by else None),
+        approvers=[m for m in STAFF.active_members() if m.is_approver],
         base_params=base_params, person_view=_person_view(person),
         ftok=issue_form_token(),
     )
@@ -783,10 +912,16 @@ def megrendeles_uj():
                 # F-W3-02: an unknown discount must fail the order, not
                 # silently price without it.
                 return f"ismeretlen kedvezmény: {discount_id}", 400
-            record = apply_discount(
-                record, cfg,
-                approved_by=(current_operator()
-                             if cfg.requires_approval else None))
+            if cfg.requires_approval:
+                # M5: a gated discount reaches the order only through a
+                # live approval reference minted by the PIN'd POST.
+                approver = approval_for(f.get("appr", ""), discount_id)
+                if approver is None:
+                    return ("a kedvezményhez Üzletvezető/Cégvezető "
+                            "jóváhagyás szükséges", 400)
+                record = apply_discount(record, cfg, approved_by=approver)
+            else:
+                record = apply_discount(record, cfg, approved_by=None)
         import uuid
         import dataclasses as _dc
         record = _dc.replace(record, quote_id=uuid.uuid4().hex)
@@ -871,7 +1006,11 @@ def megrendeles(order_id):
         "next_statuses": [(str(s), STATUS_HU[s]) for s in allowed_next(o)],
         "terminal": o.status in (OrderStatus.ATADVA, OrderStatus.LEMONDVA),
         "munkalap_url": munkalap_url,
-        "tharanis_mode": THARANIS.mode,
+        "sync_status": o.sync_status,          # MVP outbox seam, read-only
+        "deposit": (huf(o.deposit_gross) if o.deposit_gross else None),
+        "deposit_method_hu": DEPOSIT_HU.get(o.deposit_method or "", ""),
+        "remaining": huf(t_.total_retail_gross - o.deposit_gross),
+        "munkalap_pdf": o.munkalap_gcs_uri,
     }
     events = [{"occurred_at": e.occurred_at.replace("T", " ")[:16],
                "actor": operator_display(e.actor),
@@ -920,31 +1059,177 @@ def megrendeles_lemond(order_id):
     return redirect(url_for("megrendeles", order_id=order_id))
 
 
-@app.route("/megrendeles/<order_id>/tharanis", methods=["POST"])
-def megrendeles_tharanis(order_id):
-    """Tharanis DRY-RUN (R1/F-W3-01): renders the candidate berak XML onto
-    the eseménynapló. Never sends; live is hard-blocked in the adapter."""
+# MVP override 2026-07-18: no Tharanis surface in the app. Orders carry
+# sync_status='pending' (queued outbox); the future verified R1 integration
+# drains them. vendors/tharanis.py stays parked for that day.
+DEPOSIT_HU = {"keszpenz": "Készpénz", "kartya": "Bankkártya",
+              "utalas": "Átutalás"}
+
+
+@app.route("/megrendeles/<order_id>/eloleg", methods=["POST"])
+def megrendeles_eloleg(order_id):
+    """MVP deposit: gross amount + method on the order (no invoice, no
+    Szamlazz). The fizetési összesítő print shows it."""
+    from orders.records import record_deposit
     o = ORDERS.load(order_id)
     if o is None:
         return "ismeretlen megrendelés", 404
     if token_replay_result(request.form.get("ftok")) is not None:
         return redirect(url_for("megrendeles", order_id=order_id))
-    p = _person_print_fields(o.person_id or "")
+    raw = (request.form.get("amount") or "").replace(" ", "")\
+        .replace(" ", "").strip()
+    method = request.form.get("method", "")
     try:
-        out = THARANIS.send(o, customer_name=p["name"],
-                            customer_email=p["email"],
-                            customer_phone=p["phone"])
-    except TharanisWriteBlocked as e:
-        ORDERS.add_event(order_id, "note", current_operator(),
-                         note=f"Tharanis küldés elutasítva: {e}")
+        amount = Decimal(raw)
+    except Exception:
+        return "érvénytelen összeg", 400
+    try:
+        o2 = record_deposit(o, gross=amount, method=method)
+        ORDERS.save(o2, actor=current_operator(),
+                    event_note=f"Előleg rögzítve: {huf(amount)} "
+                               f"({DEPOSIT_HU.get(method, method)})")
         token_mark_used(request.form.get("ftok"), order_id)
+    except OrderError as e:
+        return f"előleg sikertelen: {e}", 400
+    return redirect(url_for("megrendeles", order_id=order_id))
+
+
+@app.route("/megrendeles/<order_id>/ertesitve", methods=["POST"])
+def megrendeles_ertesitve(order_id):
+    """MVP replacement for M9-lite: staff mark 'ügyfél értesítve' by hand
+    (phone call); the Mai átvételek queue clears its értesítendő flag."""
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    if token_replay_result(request.form.get("ftok")) is None:
+        ORDERS.add_event(order_id, "note", current_operator(),
+                         note="Ügyfél értesítve (telefonon / személyesen)")
+        token_mark_used(request.form.get("ftok"), order_id)
+    return redirect(request.form.get("next")
+                    if (request.form.get("next") or "").startswith("/")
+                    else url_for("megrendeles", order_id=order_id))
+
+
+def _order_notified(order_id: str) -> bool:
+    return any(e.event_type == "note" and "értesítve" in e.note.lower()
+               for e in ORDERS.events(order_id))
+
+
+# ------------------------------------------------- munkalap PDF (R11, MVP)
+def _docs_dir() -> str:
+    """Local PDF root. GCS (gs://szempont-docs) takes over when
+    SZEMPONT_DOCS_BUCKET is set at the infra step; local keeps staging and
+    the rehearsal working today (override: GCS-optional)."""
+    return os.environ.get("SZEMPONT_DOCS_DIR",
+                          os.path.join(os.path.dirname(HERE), "var", "docs"))
+
+
+def _munkalap_pdf_local(order_id: str, order_date: str) -> str:
+    y, m = order_date[:4], order_date[5:7]
+    return os.path.join(_docs_dir(), "munkalap", y, m, f"{order_id}.pdf")
+
+
+@app.route("/megrendeles/<order_id>/munkalap-pdf", methods=["POST"])
+def megrendeles_munkalap_pdf(order_id):
+    """Render the frozen munkalap for THIS order to PDF (wkhtmltopdf),
+    store it (local dir; GCS when configured), remember the uri on the
+    order (R11) and log the event."""
+    import shutil
+    import subprocess
+    import tempfile
+    o = ORDERS.load(order_id)
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    if token_replay_result(request.form.get("ftok")) is not None:
         return redirect(url_for("megrendeles", order_id=order_id))
-    ORDERS.add_event(order_id, "tharanis_dry_run", current_operator(),
-                     note="Tharanis berak XML előkészítve (dry-run, nem "
-                          "került elküldésre — F-W3-01)",
-                     payload=out["xml"])
+    if shutil.which("wkhtmltopdf") is None:
+        ORDERS.add_event(order_id, "note", current_operator(),
+                         note="Munkalap PDF sikertelen: wkhtmltopdf hiányzik "
+                              "a gépről (deploy checklist)")
+        return redirect(url_for("megrendeles", order_id=order_id))
+
+    lens = [l for l in o.lines if l.line_type == "lens" and not l.removed]
+    frame_line = next((l for l in o.lines
+                       if l.line_type == "frame" and not l.removed), None)
+    vals = {"sku_r": lens[0].sku if lens else "",
+            "sku_l": (lens[1].sku if len(lens) > 1
+                      else (lens[0].sku if lens else "")),
+            "frame": frame_line.sku if frame_line else "",
+            "person": o.person_id or "", "order": o.order_id,
+            "job": o.order_id.replace("SZP", "ML", 1), "due": o.due_date}
+    html, err = _munkalap_html(lambda k, d="": vals.get(k) or d)
+    if err:
+        return err, 404
+    pdf_path = _munkalap_pdf_local(o.order_id, o.order_date)
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False,
+                                     encoding="utf-8") as fh:
+        fh.write(html)
+        tmp_html = fh.name
+    try:
+        subprocess.run(["wkhtmltopdf", "--quiet",
+                        "--enable-local-file-access", tmp_html, pdf_path],
+                       check=True, timeout=60)
+    finally:
+        os.unlink(tmp_html)
+
+    uri = pdf_path
+    bucket = os.environ.get("SZEMPONT_DOCS_BUCKET")
+    if bucket:  # pragma: no cover — staging with GCS configured
+        from google.cloud import storage
+        blob_path = (f"munkalap/{o.order_date[:4]}/{o.order_date[5:7]}/"
+                     f"{o.order_id}.pdf")
+        storage.Client().bucket(bucket).blob(blob_path)\
+            .upload_from_filename(pdf_path)
+        uri = f"gs://{bucket}/{blob_path}"
+    import dataclasses as _dc
+    ORDERS.save(_dc.replace(o, munkalap_gcs_uri=uri),
+                actor=current_operator(),
+                event_note=f"Munkalap PDF elkészült: {uri}")
     token_mark_used(request.form.get("ftok"), order_id)
     return redirect(url_for("megrendeles", order_id=order_id))
+
+
+@app.route("/megrendeles/<order_id>/munkalap.pdf")
+def megrendeles_munkalap_pdf_file(order_id):
+    """Serve the locally stored munkalap PDF (GCS uris are opened via the
+    console/signed links at the infra step)."""
+    from flask import send_file
+    o = ORDERS.load(order_id)
+    if o is None or not o.munkalap_gcs_uri \
+            or o.munkalap_gcs_uri.startswith("gs://") \
+            or not os.path.exists(o.munkalap_gcs_uri):
+        return "nincs tárolt munkalap PDF", 404
+    return send_file(o.munkalap_gcs_uri, mimetype="application/pdf")
+
+
+@app.route("/print/fizetesi-osszesito")
+def print_fizetesi_osszesito():
+    """MVP payment summary print — NOT an invoice, marked NEM SZÁMLA on the
+    sheet. Covers the rehearsal need until M8/Szamlazz (deferred)."""
+    o = ORDERS.load(request.args.get("order", ""))
+    if o is None:
+        return "ismeretlen megrendelés", 404
+    t_ = order_totals(o)
+    alloc = gross_line_allocation(o)
+    p = _person_print_fields(o.person_id or "")
+    today = dt.date.today()
+    fo = {
+        "order_id": o.order_id,
+        "order_date": o.order_date,
+        "customer_name": p["name"] or "—",
+        "customer_id": p["id"] or "—",
+        "lines": [{"name": l.name, "qty": l.qty, "gross": huf(g)}
+                  for l, g in alloc],
+        "vat_note": f"Az árak {o.vat_rate * 100:.0f}% ÁFÁ-t tartalmaznak.",
+        "gross": huf(t_.total_retail_gross),
+        "deposit": huf(o.deposit_gross) if o.deposit_gross else None,
+        "deposit_method": DEPOSIT_HU.get(o.deposit_method or "", ""),
+        "remaining": huf(t_.total_retail_gross - o.deposit_gross),
+        "operator": operator_display(o.created_by),
+        "printed_at": _hu_date(today) + f" {dt.datetime.now():%H:%M}",
+    }
+    return render_template("print/fizetesi_osszesito.html", fo=fo)
 
 
 # ------------------------------------------------------- print routes (item 4b)
@@ -1003,18 +1288,25 @@ def _person_print_fields(person: str) -> dict:
 @app.route("/print/munkalap", methods=["GET", "POST"])
 def print_munkalap():
     """Lab glazing sheet — design-frozen template, data wired in (item 4b).
-    Real Code-128 (order, lens SKUs) and EAN-13 (frame GTIN) inline SVGs
-    replace the CSS placeholder stripes. Centration fields left blank when
-    not passed — the sheet stays pencil-friendly by design.
     POST supported (F-W2-04): Rx values in a POST body stay out of request
     logs; real print flows must POST, GET remains for links/demos."""
+    html, err = _munkalap_html(request.values.get)
+    if err:
+        return err, 404
+    return html
+
+
+def _munkalap_html(a) -> tuple[str | None, str | None]:
+    """Render the frozen munkalap from a value getter — shared by the print
+    route (request.values.get) and the order-PDF generator (order fields).
+    Real Code-128 (order, lens SKUs) and EAN-13 (frame GTIN) inline SVGs;
+    centration fields stay blank when not passed (pencil-friendly)."""
     snap = load_snapshot()
-    a = request.values.get
     sku_r = a("sku_r") or a("sku", "")
     sku_l = a("sku_l") or sku_r
     lens_r, lens_l = snap.lenses.get(sku_r), snap.lenses.get(sku_l)
     if lens_r is None or lens_l is None:
-        return f"ismeretlen SKU: {sku_r if lens_r is None else sku_l}", 404
+        return None, f"ismeretlen SKU: {sku_r if lens_r is None else sku_l}"
 
     today = dt.date.today()
     order_no = a("order", "").strip()
@@ -1065,7 +1357,7 @@ def print_munkalap():
         "printed_at": (_hu_date(today)
                        + f" {dt.datetime.now():%H:%M}"),
     }
-    return render_template("print/munkalap.html", ml=ml)
+    return render_template("print/munkalap.html", ml=ml), None
 
 
 # Layout-check sample for the exam sheet (the frozen mockup's own data).

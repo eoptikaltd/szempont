@@ -107,6 +107,15 @@
             <input type="radio" name="discount" value="" {{ 'checked' if not discount_id }}>
             {{ t('No discount') }}
           </label>
+          <div class="field">
+            <span class="label">{{ t('Approver — gated discounts only (Üzletvezető / Cégvezető)') }}</span>
+            <select class="select" name="approver" aria-label="{{ t('Approver') }}">
+              <option value="">—</option>
+              {% for m in approvers %}
+              <option value="{{ m.operator_id }}">{{ m.display_name }} · {{ m.roles[0] }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <div class="toolbar"><button class="btn btn--soft" type="submit">{{ t('Apply') }}</button></div>
         </form>
         {% if applied_config and applied_config.requires_approval %}

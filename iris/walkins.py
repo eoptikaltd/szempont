@@ -115,6 +115,13 @@ class InMemoryWalkinStore:
         """Test/IRIS-side helper — Szempont itself never calls this."""
         self._resolutions[z1_token] = person_id
 
+    def unsigned(self) -> tuple[WalkinPerson, ...]:
+        """Walk-ins captured WITHOUT a signed GDPR declaration — the
+        Kezdőlap 'Aláírásra váró nyilatkozatok' queue (MVP), newest first."""
+        return tuple(sorted(
+            (w for w in self._walkins.values() if not w.gdpr_signed),
+            key=lambda w: w.created_at, reverse=True))
+
 
 class BQWalkinStore:  # pragma: no cover — staging, real BQ
     """walkin_persons is append-only via batch load (same rationale as the
@@ -173,3 +180,13 @@ class BQWalkinStore:  # pragma: no cover — staging, real BQ
                 bigquery.ScalarQueryParameter("t", "STRING", z1_token)]))
         rows = list(job.result())
         return rows[0]["person_id"] if rows else None
+
+    def unsigned(self) -> tuple[WalkinPerson, ...]:
+        """Kezdőlap 'Aláírásra váró nyilatkozatok' queue (MVP)."""
+        from google.cloud import bigquery
+        sql = (f"SELECT z1_token FROM `{self.WALKINS}` "
+               "WHERE NOT gdpr_signed ORDER BY created_at DESC LIMIT 50")
+        job = self.client.query(sql, job_config=bigquery.QueryJobConfig(
+            labels={"tool": "szempont"}))
+        return tuple(w for w in (self.get(r["z1_token"])
+                                 for r in job.result()) if w)

@@ -91,5 +91,23 @@
   "Converts this quote into an order with an SZP number — the quote stays reproducible.": "Az ajánlatból SZP-számú megrendelés lesz — az ajánlat visszakereshető marad.",
   "Lens fulfilment": "Lencse biztosítása",
   "Due date": "Vállalt határidő",
-  "Create order": "Megrendelés létrehozása"
+  "Create order": "Megrendelés létrehozása",
+
+  "Ready glasses — call the customer, then hand over.": "Elkészült szemüvegek — hívd az ügyfelet, majd add át.",
+  "Mark notified": "Értesítve",
+  "No glasses waiting for pickup right now.": "Most nincs átvételre váró szemüveg.",
+  "Walk-ins captured without a signed GDPR declaration.": "Aláírt GDPR-nyilatkozat nélkül rögzített betérők.",
+  "Captured": "Rögzítve",
+  "Print the declaration, have it signed, and IRIS clears the row at the nightly resolution.": "Nyomtasd a nyilatkozatot, írasd alá — a sort az IRIS az éjszakai feloldáskor törli.",
+  "Every captured walk-in has a signed declaration.": "Minden rögzített betérőnek van aláírt nyilatkozata.",
+  "Payment summary (NOT an invoice)": "Fizetési összesítő (NEM számla)",
+  "Munkalap PDF (save)": "Munkalap PDF (mentés)",
+  "Deposit": "Előleg",
+  "Amount + method only — the invoice comes later, not from here.": "Csak összeg + mód — a számla később, nem innen készül.",
+  "Recorded deposit": "Rögzített előleg",
+  "Remaining": "Hátralék",
+  "Method": "Mód",
+  "Record deposit": "Előleg rögzítése",
+  "Approver — gated discounts only (Üzletvezető / Cégvezető)": "Jóváhagyó — csak engedélyköteles kedvezményhez (Üzletvezető / Cégvezető)",
+  "Approver": "Jóváhagyó"
 }

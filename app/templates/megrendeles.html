@@ -97,14 +97,45 @@
         {% endfor %}
         <div class="toolbar">
           <a class="btn btn--ghost" href="{{ o.munkalap_url }}" target="_blank">{{ t('Munkalap (print)') }}</a>
+          <a class="btn btn--ghost" href="{{ url_for('print_fizetesi_osszesito', order=o.row.order_id) }}" target="_blank">{{ t('Payment summary (NOT an invoice)') }}</a>
         </div>
-        <form method="post" action="{{ url_for('megrendeles_tharanis', order_id=o.row.order_id) }}">
+        <form method="post" action="{{ url_for('megrendeles_munkalap_pdf', order_id=o.row.order_id) }}">
           <input type="hidden" name="ftok" value="{{ ftok }}">
           <div class="toolbar">
-            <button class="btn btn--ghost" type="submit">Tharanis XML (dry-run)</button>
-            <span class="hint">mód: {{ o.tharanis_mode }} — éles küldés zárolva (F-W3-01)</span>
+            <button class="btn btn--ghost" type="submit">{{ t('Munkalap PDF (save)') }}</button>
+            {% if o.munkalap_pdf %}
+            <a class="btn btn--soft btn--sm" href="{{ url_for('megrendeles_munkalap_pdf_file', order_id=o.row.order_id) }}" target="_blank">PDF</a>
+            {% endif %}
           </div>
         </form>
+        <p class="hint">ERP-szinkron: {{ ui.pill('függőben' if o.sync_status == 'pending' else o.sync_status, 'muted') }} — sorban áll, semmit nem küldünk (MVP).</p>
+      </div>
+
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h2 class="card__title">{{ t('Deposit') }}</h2>
+            <p class="card__subtitle">{{ t('Amount + method only — the invoice comes later, not from here.') }}</p>
+          </div>
+        </div>
+        {% if o.deposit %}
+        <p>{{ t('Recorded deposit') }}: <b class="tnum">{{ o.deposit }}</b> ({{ o.deposit_method_hu }})
+          · {{ t('Remaining') }}: <b class="tnum">{{ o.remaining }}</b></p>
+        {% endif %}
+        {% if not o.terminal %}
+        <form method="post" action="{{ url_for('megrendeles_eloleg', order_id=o.row.order_id) }}">
+          <input type="hidden" name="ftok" value="{{ ftok }}">
+          <div class="toolbar">
+            <input class="input tnum" name="amount" placeholder="20000" aria-label="{{ t('Deposit') }}" style="max-width:10rem">
+            <select class="select" name="method" aria-label="{{ t('Method') }}" style="max-width:12rem">
+              <option value="keszpenz">Készpénz</option>
+              <option value="kartya">Bankkártya</option>
+              <option value="utalas">Átutalás</option>
+            </select>
+            <button class="btn btn--soft" type="submit">{{ t('Record deposit') }}</button>
+          </div>
+        </form>
+        {% endif %}
       </div>
 
       {% if not o.terminal %}

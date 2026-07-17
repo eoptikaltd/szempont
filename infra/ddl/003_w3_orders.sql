@@ -57,9 +57,15 @@ CREATE TABLE `szempont.orders` (
   lens_source STRING NOT NULL,          -- rendeles|keszlet (parity checklist)
   due_date DATE NOT NULL,               -- vállalt határidő (munkalap)
   channel STRING NOT NULL,              -- 'store-terez50'
-  munkalap_gcs_uri STRING,              -- R11 (W3-3, gs://szempont-docs)
+  munkalap_gcs_uri STRING,              -- R11: gs:// (or local path pre-GCS)
+  sync_status STRING NOT NULL,          -- MVP outbox seam: pending|synced|
+                                        -- failed — NOTHING sends today; the
+                                        -- future verified R1 integration
+                                        -- drains 'pending' rows
   tharanis_sorszam STRING,              -- set ONLY by a verified live berak
                                         -- (F-W3-01 follow-up + tripwire)
+  deposit_gross NUMERIC,                -- MVP deposit (amount+method only;
+  deposit_method STRING,                --  M8 invoicing deferred)
   cancel_reason STRING,                 -- R7: mandatory when lemondva
   revision INT64 NOT NULL,
   saved_at TIMESTAMP,

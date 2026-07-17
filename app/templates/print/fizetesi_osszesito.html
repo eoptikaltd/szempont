@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>Fizetési összesítő — {{ fo.order_id }}</title>
+<style>
+  /* Szempont print — FIZETÉSI ÖSSZESÍTŐ (MVP, rehearsal). NOT an invoice:
+     the NEM SZÁMLA banner is loud on purpose — the sheet exists so the
+     floor can rehearse the payment conversation before M8/Szamlazz lands.
+     Same print discipline as the munkalap: one typeface, black-on-white. */
+  @page { size: A5; margin: 10mm 12mm; }
+  :root { --ink:#1A1A1A; --line:#333; --hair:#aaa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 10pt/1.35 "DM Sans","Segoe UI",Arial,sans-serif; color:var(--ink); }
+  .num { font-variant-numeric: tabular-nums; }
+  .band { border-bottom:3pt solid var(--ink); padding-bottom:6pt;
+          display:flex; align-items:baseline; gap:10pt; }
+  .band .title { font-size:14pt; font-weight:800; }
+  .band .order { margin-left:auto; font: 700 11pt ui-monospace,Consolas,monospace; }
+  .nemszamla { margin:8pt 0; border:2.5pt solid var(--ink); padding:5pt 10pt;
+               font-size:13pt; font-weight:800; letter-spacing:.06em;
+               text-align:center; }
+  table { border-collapse:collapse; width:100%; margin-top:6pt; }
+  th { font-size:8pt; text-transform:uppercase; letter-spacing:.06em;
+       text-align:left; border-bottom:1.2pt solid var(--line); padding:3pt 6pt; }
+  td { padding:3.5pt 6pt; border-top:.5pt solid var(--hair); }
+  td.r, th.r { text-align:right; }
+  .totals td { border-top:1.2pt solid var(--line); font-weight:700; }
+  .meta { font-size:8.5pt; color:#333; margin-top:6pt; }
+  .foot { margin-top:10pt; border-top:.5pt solid var(--hair); padding-top:5pt;
+          font-size:8pt; color:#333; }
+  @media screen { body{background:#e8e8e8}
+    .sheet{width:148mm;min-height:190mm;margin:8mm auto;background:#fff;padding:10mm 12mm;box-shadow:0 2px 14px rgba(0,0,0,.18)} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="band">
+    <div class="title">eOptika — Fizetési összesítő</div>
+    <div class="order num">{{ fo.order_id }}</div>
+  </div>
+
+  <div class="nemszamla">NEM SZÁMLA — TÁJÉKOZTATÓ ÖSSZESÍTŐ</div>
+
+  <div class="meta">
+    Ügyfél: <b>{{ fo.customer_name }}</b> ({{ fo.customer_id }}) ·
+    Megrendelés kelte: <span class="num">{{ fo.order_date }}</span>
+  </div>
+
+  <table>
+    <thead><tr><th>Tétel</th><th class="r">Db</th><th class="r">Bruttó</th></tr></thead>
+    <tbody>
+      {% for l in fo.lines %}
+      <tr><td>{{ l.name }}</td><td class="r num">{{ l.qty }}</td><td class="r num">{{ l.gross }}</td></tr>
+      {% endfor %}
+      <tr class="totals"><td>Összesen (bruttó)</td><td></td><td class="r num">{{ fo.gross }}</td></tr>
+      {% if fo.deposit %}
+      <tr><td>Fizetett előleg ({{ fo.deposit_method }})</td><td></td><td class="r num">−{{ fo.deposit }}</td></tr>
+      <tr class="totals"><td>Fizetendő átvételkor</td><td></td><td class="r num">{{ fo.remaining }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="meta">{{ fo.vat_note }}</div>
+
+  <div class="foot">
+    Ez az összesítő NEM minősül számlának vagy nyugtának, fizetési
+    kötelezettséget nem keletkeztet. A hivatalos bizonylat a pénztári
+    folyamatban készül. · Rögzítette: {{ fo.operator }} ·
+    eOptika Márkabolt, 1066 Budapest, Teréz krt 50 ·
+    Nyomtatva: <span class="num">{{ fo.printed_at }}</span>
+  </div>
+
+</div>
+</body>
+</html>
