@@ -310,18 +310,20 @@ def test_append_only_revisions():
 
 # ------------------------------------------------------------------ BQ serde
 def ddl_quotes_columns():
-    """Parse the ACTUAL DDL files (F-W2-05): this test fails when either the
-    DDL or the serializer changes without the other."""
+    """Parse the ACTUAL DDL (F-W2-05): this test fails when either the DDL or
+    the serializer changes without the other. Since 002 v3, szempont.quotes is
+    recreated in 002 with the full final schema — that CREATE TABLE block is
+    authoritative (001's is the pre-W2 base, superseded)."""
     import re
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     field = re.compile(r"\b([a-z_][a-z0-9_]*)\s+"
                        r"(?:STRING|INT64|NUMERIC|BOOL|DATE|TIMESTAMP|JSON|"
                        r"FLOAT64)\b")
-    ddl1 = (root / "infra/ddl/001_szempont_dataset.sql").read_text()
+    ddl2 = (root / "infra/ddl/002_w2_rulings.sql").read_text()
     block = re.search(
-        r"CREATE TABLE IF NOT EXISTS `szempont\.quotes` \((.*?)\n\)",
-        ddl1, re.S).group(1)
+        r"CREATE TABLE `szempont\.quotes` \((.*?)\n\)",
+        ddl2, re.S).group(1)
     cols, struct = set(), set()
     depth = 0
     for raw in block.splitlines():
@@ -337,14 +339,6 @@ def ddl_quotes_columns():
         else:
             struct |= names
         depth += line.count("<") - line.count(">")
-    ddl2 = (root / "infra/ddl/002_w2_rulings.sql").read_text()
-    for name in re.findall(
-            r"ALTER TABLE `szempont\.quotes`\s+"
-            r"ADD COLUMN IF NOT EXISTS\s+([a-z_.]+)", ddl2):
-        if "." in name:
-            struct.add(name.split(".", 1)[1])
-        else:
-            cols.add(name)
     return cols, struct
 
 

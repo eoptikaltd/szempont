@@ -15,3 +15,23 @@ scope: Szempont Execution Spec v2 + Handover Brief (project files).
 ```
 pip install -e ".[dev]" && pytest
 ```
+
+## Deploy (staging)
+Two images, both built from one source upload via `infra/cloudbuild.yaml`
+(`gcloud builds submit` has **no `-f` flag** — non-root Dockerfiles must go
+through a build config):
+
+- **app** (`app/Dockerfile`) → Cloud Run service `szempont-app-staging`. Must
+  COPY every local package the Flask app imports (`pricing/ ingest/ quotes/
+  vendors/ iris/ app/`) and install `app/requirements.txt` (python-barcode,
+  google-cloud-bigquery) — guarded by `tests/test_dockerfile.py` after the
+  2026-07-17 boot crash (ImportError, gunicorn worker exit 3).
+- **catalog-sync** (`infra/Dockerfile.ingest`) → Cloud Run job
+  `szempont-catalog-sync-staging`.
+
+```
+./infra/deploy_staging.sh    # builds both images, deploys job + app service
+gcloud run jobs execute szempont-catalog-sync-staging --region=europe-west1
+gcloud run services proxy szempont-app-staging --region=europe-west1   # IAM-gated
+```
+Production deploys need Sabie's wave sign-off (CLAUDE.md).

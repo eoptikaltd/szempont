@@ -1,0 +1,30 @@
+# Szempont staging build — one source upload, two images.
+# `gcloud builds submit --tag` can only build a root ./Dockerfile (there is no
+# -f flag), so both non-root Dockerfiles are built through this config.
+# Submit via infra/deploy_staging.sh.
+steps:
+  - id: build-app
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - app/Dockerfile
+      - -t
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/szempont/app:${_GIT_SHA}'
+      - .
+  - id: build-catalog-sync
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - infra/Dockerfile.ingest
+      - -t
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/szempont/catalog-sync:${_GIT_SHA}'
+      - .
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/szempont/app:${_GIT_SHA}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/szempont/catalog-sync:${_GIT_SHA}'
+substitutions:
+  _REGION: europe-west1
+options:
+  logging: CLOUD_LOGGING_ONLY
