@@ -1,11 +1,13 @@
 """Szempont — in-store POS, Atlas tool shell. W2 head start: M2 UI.
 
 Pages:
-  /        Lens finder — parametric search over the active CatalogSnapshot
-           (Rx, design, index, coating tier, photochromic, options),
-           candidates margin-sorted. Archetype: list_monitor.
-  /quote   One configured quote in depth (lines, VAT, margin, override).
-           Archetype: detail_view.
+  /              Kezdőlap — ClearVis-pattern landing: ügyfélkeresés quick card
+                 + W3 placeholders (készlet-ellenőrzés, queue cards).
+  /lencsekereso  Lens finder — parametric search over the active
+                 CatalogSnapshot (Rx, design, index, coating tier,
+                 photochromic, options). Archetype: list_monitor.
+  /quote         One configured quote in depth (lines, VAT, margin, override).
+                 Archetype: detail_view.
 
 Data source: catalog.load_snapshot() — demo fixture now, BigQuery
 szempont.lens_catalog_* once M1 has ingested a real supplier file.
@@ -142,6 +144,22 @@ def token_mark_used(tok: str | None, result: object) -> None:
 with open(os.path.join(HERE, "nav.json"), encoding="utf-8") as fh:
     NAV = json.load(fh)
 
+# Szempont left-rail (IA map §1, column 2) — ClearVis vocabulary verbatim.
+# Items without an endpoint are W3: rendered visible but disabled with a wave
+# badge, so staff learn the final layout during the parallel run.
+TOOL_NAV = [
+    {"label": "Kezdőlap", "endpoint": "kezdolap"},
+    {"label": "Ügyfelek", "endpoint": "ugyfel"},
+    {"label": "Lencsekereső", "endpoint": "finder",
+     "children": [{"label": "Konzultáció", "endpoint": "konzultacio"}]},
+    {"label": "Ajánlat", "endpoint": "quote"},
+    {"label": "Megrendelések", "wave": "W3"},
+    {"label": "Eladások", "wave": "W3"},
+    {"label": "Készlet", "wave": "W3"},
+    {"label": "Kimutatások", "wave": "W3"},
+    {"label": "Adminisztráció", "wave": "W3"},
+]
+
 LANGUAGES = [("hu", "Magyar"), ("en", "English")]
 CATALOG_I18N = {}
 for _f in glob.glob(os.path.join(HERE, "translations", "*.json")):
@@ -177,7 +195,7 @@ def inject_globals():
     op = operator_display(current_operator())
     return dict(t=t, app_name=APP_NAME, lang=lang, languages=LANGUAGES,
                 density=_cookie("density", DENSITIES, "comfortable"),
-                nav=NAV, nav_active=TOOL_ID, huf=huf,
+                nav=NAV, nav_active=TOOL_ID, tool_nav=TOOL_NAV, huf=huf,
                 operator_name=op,
                 operator_initials="".join(w[0] for w in op.split()[:2]).upper())
 
@@ -277,6 +295,18 @@ def ugyfel_walkin():
 
 
 @app.route("/")
+def kezdolap():
+    """ClearVis-pattern landing (IA map row 1): ügyfélkeresés quick card
+    posting into /ugyfel, plus the W3 placeholders (készlet-ellenőrzés,
+    Aláírásra váró nyilatkozatok, Mai átvételek) rendered disabled."""
+    # Pre-shell links carried finder params on "/" — forward them, nothing
+    # else on this route takes query params.
+    if any(k in request.args for k in ("od_sph", "os_sph", "person", "opt")):
+        return redirect(url_for("finder", **request.args.to_dict(flat=False)))
+    return render_template("kezdolap.html", page_title="Kezdőlap")
+
+
+@app.route("/lencsekereso")
 def finder():
     """Prescription-pad-first lens finder (research: Glasson/ClearVis pattern).
     OD/OS rows -> lens families where BOTH eyes' exact-power SKUs exist,
@@ -421,6 +451,11 @@ def quote():
     sku_l = request.args.get("sku_l") or sku_r
     frame_sku = request.args.get("frame", "")
     person = request.args.get("person", "").strip()
+    if not sku_r:
+        # Reached from the left rail with nothing configured — friendly
+        # empty state (200), not the unknown-SKU 404.
+        return render_template("quote.html", page_title="Quote", error=None,
+                               empty=True, q=None, r=None, l=None, lines=[])
     try:
         snap, qr, ql, frame, record = _preview_record(
             sku_r, sku_l, options, frame_sku, person, today)

@@ -14,7 +14,7 @@
 <body>
 {% include '_sprite.html' %}
 <div class="app">
-  {{ ui.sidebar(nav, nav_active) }}
+  {{ ui.sidebar(nav, nav_active, tool_nav, request.endpoint) }}
   <main class="main">
     <header class="topbar">
       <div class="topbar__title">{% block page_title %}{{ page_title }}{% endblock %}</div>

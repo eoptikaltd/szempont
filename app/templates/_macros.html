@@ -3,13 +3,44 @@
 {# --- icon: draw a glyph from the sprite (id without the i- prefix) --- #}
 {% macro icon(name, cls='') %}<svg class="icon {{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
 
-{# --- sidebar: renders the whole Atlas menu from nav.json --- #}
-{% macro sidebar(nav, active='') %}
+{# --- sidebar: renders the whole Atlas menu from nav.json; tool_nav = the
+   Szempont left-rail (IA map §1, col 2) rendered as the first section —
+   built pages link live, W3 items sit visible but disabled with a wave
+   badge. Contract classes only: sub-items indent with the empty 20px icon
+   slot, disabled items are .muted spans. --- #}
+{% macro sidebar(nav, active='', tool_nav=None, endpoint='') %}
 <aside class="sidebar">
   <a class="sidebar__brand" href="{{ nav.home.url }}">
     <div class="mark">{{ icon('atlas') }}</div>
     <div><div class="name">Atlas</div><div class="sub">eOptika Ops</div></div>
   </a>
+  {% if tool_nav %}
+  <div>
+    <div class="sidebar__section">Szempont</div>
+    <nav class="nav">
+      {% for it in tool_nav %}
+      {% if it.endpoint %}
+      <a class="nav-item {{ 'nav-item--active' if endpoint == it.endpoint }}"
+         href="{{ url_for(it.endpoint) }}" {{ 'aria-current=page' if endpoint == it.endpoint }}>
+        <span class="nav-item__label">{{ it.label }}</span>
+      </a>
+      {% for ch in it.children or [] %}
+      <a class="nav-item {{ 'nav-item--active' if endpoint == ch.endpoint }}"
+         href="{{ url_for(ch.endpoint) }}" {{ 'aria-current=page' if endpoint == ch.endpoint }}>
+        <svg class="icon" aria-hidden="true"></svg>
+        <span class="nav-item__label">{{ ch.label }}</span>
+      </a>
+      {% endfor %}
+      {% else %}
+      <span class="nav-item muted" aria-disabled="true">
+        <span class="nav-item__label">{{ it.label }}</span>
+        <span class="status status--muted">{{ it.wave }}</span>
+      </span>
+      {% endif %}
+      {% endfor %}
+    </nav>
+  </div>
+  {% endif %}
   {% for group in nav.groups %}
   <div>
     <div class="sidebar__section">{{ group.name }}</div>

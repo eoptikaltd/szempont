@@ -9,7 +9,7 @@ def c():
 
 
 def test_finder_pair_results_render():
-    r = c().get("/?od_sph=-2&od_cyl=0&os_sph=-1.5&os_cyl=0")
+    r = c().get("/lencsekereso?od_sph=-2&od_cyl=0&os_sph=-1.5&os_cyl=0")
     assert r.status_code == 200
     b = r.data.decode()
     assert "OD" in b and "OS" in b and "tnum" in b
@@ -29,7 +29,7 @@ def test_quote_single_sku_backcompat_and_404():
 
 # ---------------------------------------------------------- W2 item 2 additions
 def test_finder_dormant_pill_and_choice_group_chips():
-    b = c().get("/?od_sph=-2&os_sph=-2").data.decode()
+    b = c().get("/lencsekereso?od_sph=-2&os_sph=-2").data.decode()
     assert "HOY-NLX-174-PREM-70" in b        # dormant family still offered...
     assert "alvó SKU" in b                   # ...with the muted pill (ruling 10)
     assert "Tükrös bevonat" in b and 'name="cg_0"' in b  # D5 chips render
@@ -40,7 +40,7 @@ def test_finder_dormant_pill_and_choice_group_chips():
 
 
 def test_finder_choice_group_selection_prices_sun_lens():
-    b = c().get("/?od_sph=-2&os_sph=-2&cg_0=mirror_blue").data.decode()
+    b = c().get("/lencsekereso?od_sph=-2&os_sph=-2&cg_0=mirror_blue").data.decode()
     assert "EYT-SUN-150-HMC-65" in b
     assert "ártól — opció választandó" not in b   # configured -> exact price
     # 2 x (9900 + 9000) = 37800 net -> 48006 gross
@@ -127,7 +127,7 @@ def test_hostile_names_escaped_everywhere():
     WALKINS.save(new_walkin(display_name="<script>alert(1)</script>Béla",
                             created_by="t", token_fn=lambda: "Z1-xss",
                             now_fn=lambda: "T0"))
-    for path in ("/?person=Z1-xss",
+    for path in ("/lencsekereso?person=Z1-xss",
                  "/quote?sku=HOY-NLX-160-HMC-70&person=Z1-xss",
                  "/print/munkalap?sku_r=HOY-NLX-160-HMC-70&person=Z1-xss",
                  "/print/latasvizsgalat?name=%3Cscript%3Ealert(1)%3C/script%3E"):
@@ -216,6 +216,43 @@ def test_print_latasvizsgalat_pass_through_only():
     assert "Minta Anna" in demo and "JJ OATP" in demo
     prefilled = c().get("/print/latasvizsgalat?person=P-1001").data.decode()
     assert "Kovács Éva" in prefilled and "P-1001" in prefilled
+
+
+# ------------------------------------------------------------- shell (W2 close)
+def test_kezdolap_is_landing_and_legacy_finder_links_redirect():
+    r = c().get("/")
+    assert r.status_code == 200
+    b = r.data.decode()
+    assert "Ügyfélkeresés" in b and 'action="/ugyfel"' in b
+    assert "Készlet-ellenőrzés" in b            # present but disabled (W3)
+    assert "Aláírásra váró nyilatkozatok" in b and "Mai átvételek" in b
+    legacy = c().get("/?od_sph=-2&os_sph=-2")   # pre-shell finder bookmark
+    assert legacy.status_code == 302
+    assert "/lencsekereso" in legacy.headers["Location"]
+
+
+def test_left_rail_renders_all_ia_map_items():
+    b = c().get("/").data.decode()
+    for label in ("Kezdőlap", "Ügyfelek", "Lencsekereső", "Konzultáció",
+                  "Ajánlat", "Megrendelések", "Eladások", "Készlet",
+                  "Kimutatások", "Adminisztráció"):
+        assert label in b, label
+    assert b.count('aria-disabled="true"') == 5  # the five W3 items
+    for href in ('href="/lencsekereso"', 'href="/ugyfel"',
+                 'href="/konzultacio"', 'href="/quote"'):
+        assert href in b, href
+
+
+def test_finder_subtitle_says_ajanlott_elol():
+    b = c().get("/lencsekereso?od_sph=-2&os_sph=-2").data.decode()
+    assert "ajánlott elöl" in b
+    assert "best margin first" not in b
+
+
+def test_quote_without_sku_is_friendly_empty_state_not_404():
+    r = c().get("/quote")
+    assert r.status_code == 200
+    assert "Nincs kiválasztott lencsepár" in r.data.decode()
 
 
 def test_auto_approved_gated_discount_audited_on_apply_never_on_render():

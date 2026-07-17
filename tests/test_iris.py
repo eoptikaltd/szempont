@@ -144,7 +144,7 @@ def test_walkin_post_mints_z1_and_starts_sale():
 def test_person_threads_from_finder_to_quote_and_resolves():
     from app.app import WALKINS
     # A-grade person chip on finder + carried into quote links
-    b = ui().get("/?od_sph=-2&os_sph=-2&person=P-1001").data.decode()
+    b = ui().get("/lencsekereso?od_sph=-2&os_sph=-2&person=P-1001").data.decode()
     assert "Kovács Éva" in b and "person=P-1001" in b
     # Z1 walk-in on the quote: pending, then resolved via the join
     WALKINS.save(new_walkin(display_name="Betérő Béla", created_by="t",

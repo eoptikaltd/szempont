@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% import '_macros.html' as ui %}
+{# Szempont · Kezdőlap — ClearVis-pattern landing (IA map row 1): the same
+   two quick cards staff know (ügyfélkeresés, készlet-ellenőrzés) plus the
+   two work queues. W3 items render disabled but visible, so the floor
+   learns the final layout during the parallel run. #}
+{% block content %}
+
+  <div class="grid cols-2">
+    <div class="card">
+      <div class="card__header">
+        <div>
+          <h2 class="card__title">{{ t('Customer search') }}</h2>
+          <p class="card__subtitle">{{ t('A-grade fulfilment zone only — IRIS owns identity') }}</p>
+        </div>
+      </div>
+      <form method="get" action="{{ url_for('ugyfel') }}">
+        <div class="toolbar">
+          <input class="input" name="q" placeholder="{{ t('Name, phone or email') }}" aria-label="{{ t('Name, phone or email') }}" autofocus>
+          <button class="btn btn--primary" type="submit">{{ t('Search') }}</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="card__header">
+        <div>
+          <h2 class="card__title">{{ t('Stock check') }}</h2>
+          <p class="card__subtitle">{{ t('Arrives with W3 — until then stock lives in Tharanis.') }}</p>
+        </div>
+        {{ ui.pill('W3', 'muted') }}
+      </div>
+      <div class="toolbar">
+        <input class="input" placeholder="{{ t('SKU or product name') }}" aria-label="{{ t('SKU or product name') }}" disabled>
+        <button class="btn btn--ghost" type="button" disabled>{{ t('Check') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <div class="card__header">
+        <div>
+          <h2 class="card__title">{{ t('Declarations awaiting signature') }}</h2>
+          <p class="card__subtitle">{{ t('Queue arrives with W3.') }}</p>
+        </div>
+        {{ ui.pill('W3', 'muted') }}
+      </div>
+      <p class="hint">{{ t('GDPR and EP declarations to be signed will queue here.') }}</p>
+    </div>
+    <div class="card">
+      <div class="card__header">
+        <div>
+          <h2 class="card__title">{{ t("Today's pickups") }}</h2>
+          <p class="card__subtitle">{{ t('Queue arrives with W3.') }}</p>
+        </div>
+        {{ ui.pill('W3', 'muted') }}
+      </div>
+      <p class="hint">{{ t('Finished glasses ready for handover will queue here.') }}</p>
+    </div>
+  </div>
+
+{% endblock %}

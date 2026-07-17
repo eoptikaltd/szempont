@@ -34,5 +34,6 @@ Atlas design system (kit in project files): cream `#FBF7EE` / gold `#C9A961` / i
 
 ## Workflow
 - Wave plan per spec §3.1 (W1: M1+M2 engine; W2: M2 UI + M3; W3: M4+M5). End every wave with an adversarial self-review pass, then a short milestone report: `Szempont - Milestone Report YYYYMMDD vN eOptika AI.md`.
+- User manual increment: for every screen frozen this wave, add task-recipe chapters (Hungarian, task-oriented "Hogyan..." format) to `docs/manual/`, with screenshots captured from the locally running app via wkhtmltoimage; the manual increment is reviewed at the same wave gate as the milestone report; pilot reader is a floor colleague, not the founder.
 - Decisions for Sabie: numbered menu, recommended option marked.
 - When blocked on external items (IRIS views, comms contract, credentials): stub against the documented contract and continue; batch questions.

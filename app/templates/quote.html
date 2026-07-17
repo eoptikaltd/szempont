@@ -2,10 +2,10 @@
 {# Szempont · Quote — detail_view. Lens pair + Unas frame + munkadíj + curated
    discount, assembled through the M2 persistence record (W2 item 2). #}
 {% block content %}
-{% if error %}
+{% if error or empty %}
   <div class="card">
-    <div class="card__header"><h2 class="card__title">{{ t('Quote not available') }}</h2></div>
-    <p class="hint">{{ error }}</p>
+    <div class="card__header"><h2 class="card__title">{{ t('Quote not available') if error else t('No lens pair selected') }}</h2></div>
+    <p class="hint">{{ error or t('Pick a pair in the Lencsekereső first — the quote opens from there.') }}</p>
     <div class="toolbar"><a class="btn btn--primary" href="{{ url_for('finder') }}">{{ t('Back to lens finder') }}</a></div>
   </div>
 {% else %}

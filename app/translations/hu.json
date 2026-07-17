@@ -58,5 +58,18 @@
   "Marketing OK": "Marketing hozzájárulás", "DM blocked": "DM tiltva",
   "Create walk-in and start sale": "Betérő rögzítése és eladás indítása",
   "walk-in — awaiting IRIS resolution": "betérő — IRIS-feloldásra vár",
-  "resolved": "azonosítva"
+  "resolved": "azonosítva",
+
+  "Families where both eyes are available, recommended first": "Családok, ahol mindkét szemre van lencse — ajánlott elöl",
+  "Stock check": "Készlet-ellenőrzés",
+  "Arrives with W3 — until then stock lives in Tharanis.": "A W3 hullámmal érkezik — addig a készlet a Tharanisban él.",
+  "SKU or product name": "Cikkszám vagy terméknév",
+  "Check": "Ellenőrzés",
+  "Declarations awaiting signature": "Aláírásra váró nyilatkozatok",
+  "Today's pickups": "Mai átvételek",
+  "Queue arrives with W3.": "A várólista a W3 hullámmal érkezik.",
+  "GDPR and EP declarations to be signed will queue here.": "Ide gyűlnek majd az aláírandó GDPR- és EP-nyilatkozatok.",
+  "Finished glasses ready for handover will queue here.": "Ide gyűlnek majd az átadásra kész szemüvegek.",
+  "No lens pair selected": "Nincs kiválasztott lencsepár",
+  "Pick a pair in the Lencsekereső first — the quote opens from there.": "Előbb válassz párt a Lencsekeresőben — az ajánlat onnan nyílik."
 }
